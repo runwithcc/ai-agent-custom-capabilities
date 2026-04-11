@@ -45,6 +45,7 @@
 - [assets/bitable-schema-v1.yaml](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/capabilities/lifeos-phase1/assets/bitable-schema-v1.yaml)
 - [assets/setup_lifeos_bitable_phase1.js](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/capabilities/lifeos-phase1/assets/setup_lifeos_bitable_phase1.js)
 - [assets/lifeos_phase1_runtime.py](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/capabilities/lifeos-phase1/assets/lifeos_phase1_runtime.py)
+- [assets/runtime-host-overrides/feishu.py](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/capabilities/lifeos-phase1/assets/runtime-host-overrides/feishu.py)
 
 ## 3. 当前实现状态
 
@@ -61,7 +62,12 @@
 - 接 GitHub 远端自动发布流程
 - 把本目录变成每次变更的强制落点
 - 把更多已有脚本逐步迁到这个专属目录下
+- 把当前版本真正部署到正在运行的 Hermes 宿主机
 
 ## 4. 相关讨论记录
 
 - [2026-04-11 Hermes LifeOS Phase1 Build Log](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/sessions/2026-04-11-hermes-lifeos-phase1-build-log.md)
+
+## 5. 部署说明
+
+- [DEPLOY-TO-HERMES.md](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/capabilities/lifeos-phase1/DEPLOY-TO-HERMES.md)
