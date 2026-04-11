@@ -154,3 +154,35 @@
 3. 让 record-ingest 在“内容明显需要反馈”但原始 `output_mode=仅记录` 时自动提升为 `轻反馈`
 4. 让飞书卡片发送在 `send_card` 不可用时自动降级回文本
 5. 把 `record_feedback_contract.py` 纳入专属资产目录与正式部署脚本
+
+## 9. 追加问题定义：hiddenwangcc 判断标准正式入规
+
+在 2026-04-12 的最新反馈审阅中，hiddenwangcc 补充了更高分辨率的人类判断标准。
+
+这次新增的关键判断不是“文案不好”，而是：
+
+1. 标题没有记忆索引能力
+- 抽象标题在人类 1 个月后回看时几乎无法快速定位场景
+- 主标题必须能够体现：背景、动作、阶段、预期或判断
+
+2. 副标题没有问答结构
+- 主标题必须是副标题这个问题的答案
+- 没有问题，就不算真正形成结构化反馈
+
+3. 反馈没有围绕“内容与你之间的关系”
+- 仅解释内容本身不够
+- 必须解释：这条内容为什么会在此时从 hiddenwangcc 这里出现，以及它和当前系统推进的关系
+
+4. 结构判断维度需要继续进化
+- 表达类型需要长期积累
+- 情绪判断必须给出真实情绪词汇
+- 当前能量需要切到“大卫霍金斯意识能量层级”
+- 当前状态与需要可继续保留
+
+5. “关键内容 / 重要性 / 下一步行动 / 继续帮什么”缺少开发感
+- 这些部分当前仍然太像开发前灵感记录
+- 还不像真正处在 Hermes / LifeOS 构建过程中的反馈
+
+针对以上标准，新增文档：
+
+- [feedback-scoring-rubric-v2.md](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/capabilities/lifeos-phase1/feedback-scoring-rubric-v2.md)

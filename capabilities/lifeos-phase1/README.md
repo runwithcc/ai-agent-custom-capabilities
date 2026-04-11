@@ -25,6 +25,7 @@
 - [Hermes Phase1 详细方案](/Users/hiddenwangcc/Documents/Playground/docs/plans/2026-04-11-hermes-phase1-detailed-plan.md)
 - [Hermes Memory Contract V1](/Users/hiddenwangcc/Documents/Playground/docs/plans/2026-04-11-hermes-memory-contract-v1.md)
 - [Hermes Feedback Contract V1](/Users/hiddenwangcc/Documents/Playground/docs/plans/2026-04-11-hermes-feedback-contract-v1.md)
+- [Feedback Scoring Rubric V2](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/capabilities/lifeos-phase1/feedback-scoring-rubric-v2.md)
 - [Hermes 全局模块方案 V1](/Users/hiddenwangcc/Documents/Playground/docs/plans/2026-04-11-hermes-global-module-plan-v1.md)
 - [LifeOS Module Ledger V1](/Users/hiddenwangcc/Documents/Playground/docs/plans/2026-04-11-lifeos-module-ledger-v1.md)
 - [Route Registry V1](/Users/hiddenwangcc/Documents/Playground/docs/plans/2026-04-11-route-registry-v1.md)
