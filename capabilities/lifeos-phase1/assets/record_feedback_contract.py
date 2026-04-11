@@ -66,7 +66,7 @@ def _is_agent_runtime_discussion(raw_text: str) -> bool:
     if not raw_text:
         return False
     assistant_markers = r"codex|openclaw|hermes|claude ?code|chatgpt|atlas|bot|agent|机器人"
-    runtime_markers = r"代码层|源码|提示词|llm|架构|schema|字段名|路由|服务器|部署|模块|工作流|流程|步骤|插件|github|repo|版本管理|同步到 ?github|文档留存|专门的文件夹"
+    runtime_markers = r"代码层|源码|提示词|llm|架构|schema|字段名|路由|服务器|部署|模块|工作流|流程|步骤|插件|github|repo|版本管理|同步到 ?github|文档留存|专门的文件夹|功能|调试|测试|验收|卡片|入库|反馈"
     if re.search(assistant_markers, raw_text, re.IGNORECASE) and re.search(runtime_markers, raw_text, re.IGNORECASE):
         return True
     if re.search(assistant_markers, raw_text, re.IGNORECASE):
@@ -88,6 +88,8 @@ def detect_agent_strategy_subtype(event: dict) -> str:
     raw_text = normalize_text(event.get("raw_text") or event.get("message"))
     if not is_agent_strategy_note(event):
         return ""
+    if is_feature_debug_note(event):
+        return "feature_debug"
     asset_score = sum(
         1
         for pattern in (
@@ -193,7 +195,66 @@ def _display_needs(values: List[str]) -> str:
     return "、".join(_NEED_LABELS.get(value, value) for value in values[:3])
 
 
+def infer_emotion_words(event: dict) -> List[str]:
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    emotion_tags = split_tag_text(event.get("emotion_tags"))
+    emotions: List[str] = []
+    if re.search(r"试试看|看看效果|想试|尝试一次|希望", raw_text):
+        emotions.append("期待")
+    if re.search(r"不会那么理想|不可能那么清楚|还没有调试|先试试看|先看看", raw_text):
+        emotions.append("审慎")
+    if re.search(r"终于|太好了|wow|非常开心|超级好|飞起来", raw_text, re.IGNORECASE):
+        emotions.extend(["兴奋", "满足"])
+    if re.search(r"担心|害怕|焦虑|不安", raw_text):
+        emotions.extend(["担心", "不安"])
+    if re.search(r"清楚了|想明白了|形成了一个逻辑|笃定", raw_text):
+        emotions.append("笃定")
+    if re.search(r"抱着 codex 睡", raw_text):
+        emotions.append("投入")
+    if re.search(r"温暖|幸福|爱", raw_text):
+        emotions.append("温暖")
+    emotions.extend(emotion_tags)
+    return unique_list(emotions)[:3] or ["平静"]
+
+
+def infer_hawkins_level(event: dict) -> str:
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    scene_type = normalize_text(event.get("scene_type"))
+    if re.search(r"爱|温暖|孩子|幸福", raw_text):
+        return "爱（500）"
+    if re.search(r"调试|测试|验收|判断|分析|字段名|schema|逻辑|流程|试试看|不会那么理想|不可能那么清楚", raw_text):
+        return "理性（400）"
+    if re.search(r"终于|太好了|wow|超级好|非常开心|很想", raw_text, re.IGNORECASE):
+        return "意愿（310）"
+    if re.search(r"担心|焦虑|害怕|不安", raw_text):
+        return "勇气（200）"
+    if scene_type in {"情绪", "触动"}:
+        return "中性（250）"
+    return "中性（250）"
+
+
+def infer_feature_focus(event: dict) -> str:
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    if re.search(r"卡片.*入库|入库.*卡片|卡片.*反馈|反馈.*卡片", raw_text):
+        return "卡片反馈功能"
+    if re.search(r"入库功能|记录入库|反馈功能", raw_text):
+        return "记录入库功能"
+    if re.search(r"工作流|流程", raw_text):
+        return "协作工作流"
+    return "系统功能"
+
+
+def is_feature_debug_note(event: dict) -> bool:
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    return bool(
+        re.search(r"卡片|入库|反馈功能|调试|测试|试试看|看看效果|不会那么理想|还没有调试|验收", raw_text)
+        and re.search(r"codex|hermes|chatgpt|agent", raw_text, re.IGNORECASE)
+    )
+
+
 def _header_template(event: dict) -> str:
+    if detect_agent_strategy_subtype(event) == "feature_debug":
+        return "orange"
     if is_agent_strategy_note(event):
         return "green"
     if is_stability_leadership_note(event):
@@ -239,25 +300,31 @@ def _header_copy(event: dict) -> tuple[str, str]:
     dailynote = event.get("dailynote_sync")
     agent_subtype = detect_agent_strategy_subtype(event)
 
+    if agent_subtype == "feature_debug":
+        focus = infer_feature_focus(event)
+        return (
+            f"连续调试{focus}，当前初期阶段预期不会很高",
+            _ensure_question_prefix(f"当前{focus}调试处于什么阶段？"),
+        )
     if agent_subtype == "assetization":
         return (
-            "🧱 真正开始稳定复利的，不只是功能，而是能力资产开始被沉淀了",
-            _ensure_question_prefix("怎样把一次次开发成果，真正变成可迁移、可版本化、可持续接力的能力资产？"),
+            "把开发过程沉淀进专属文件夹，并开始用 GitHub 做版本托管",
+            _ensure_question_prefix("这次系统建设真正往前推进到了哪里？"),
         )
     if agent_subtype == "mobile_handoff":
         return (
-            "📲 真正变强的不是单点工具，而是手机端和代码端开始接力配合",
-            _ensure_question_prefix("怎样让手机上的表达、浏览器里的分析和 Codex 的执行形成一条不中断的推进链路？"),
+            "手机端表达接到 Codex 执行，开始形成跨设备推进链路",
+            _ensure_question_prefix("这次跨设备协作真正打通了哪一段链路？"),
         )
     if agent_subtype == "workflow_sop":
         return (
-            "🪜 真正高效的地方，是你已经把 Agent 协作长成了一条可反复执行的流程",
-            _ensure_question_prefix("怎样把“有感就发 -> AI 理解 -> Codex 落地 -> GitHub 管理 -> Agent 验证”沉淀成长期稳定的 SOP？"),
+            "AI 协作六步流程已经成型，开始进入可重复执行阶段",
+            _ensure_question_prefix("当前 Agent 协作流程已经被你压缩成什么样的 SOP？"),
         )
     if agent_subtype == "runtime_strategy":
         return (
-            "💡 稳定效果来自直达结构与代码层，而不是反复调 bot",
-            _ensure_question_prefix("为什么有些 AI Agent 调了很多次，效果还是不稳定？"),
+            "绕开反复调 bot，直接下到 agent / 代码层做稳定实现",
+            _ensure_question_prefix("为什么这次你会判断应该直达 agent 或代码层？"),
         )
     if is_stability_leadership_note(event):
         return (
@@ -346,6 +413,9 @@ def _header_copy(event: dict) -> tuple[str, str]:
 
 def _human_tags(event: dict) -> List[str]:
     agent_subtype = detect_agent_strategy_subtype(event)
+    if agent_subtype == "feature_debug":
+        focus = infer_feature_focus(event)
+        return [focus, "早期验证", "反馈调试"]
     if agent_subtype == "assetization":
         return ["能力资产化", "版本管理", "系统建设"]
     if agent_subtype == "mobile_handoff":
@@ -383,36 +453,46 @@ def _judgement_items(event: dict) -> List[str]:
     needs = split_tag_text(event.get("needs"))
     intensity = _translate_intensity(normalize_text(event.get("intensity")).lower())
     agent_subtype = detect_agent_strategy_subtype(event)
+    emotion_text = "、".join(infer_emotion_words(event))
+    hawkins_level = infer_hawkins_level(event)
 
+    if agent_subtype == "feature_debug":
+        return [
+            "表达类型：功能调试 / 早期验收",
+            f"情绪判断：{emotion_text}",
+            f"当前能量：{hawkins_level}",
+            "当前状态：在低预期前提下，主动做一轮真实测试，想看系统现在到底长成什么样",
+            "你此刻更需要的：验收、补字段、继续调试",
+        ]
     if agent_subtype == "assetization":
         return [
             "表达类型：系统建设 / 能力资产化",
-            "情绪判断：清晰、满意",
-            "当前能量：中高",
+            f"情绪判断：{emotion_text}",
+            f"当前能量：{hawkins_level}",
             "当前状态：在把一次开发过程升级成可迁移、可管理的长期资产",
             "你此刻最在意的：留存、版本管理、未来接力",
         ]
     if agent_subtype == "mobile_handoff":
         return [
             "表达类型：工作流启发 / 协作设计",
-            "情绪判断：兴奋、打开",
-            "当前能量：高",
+            f"情绪判断：{emotion_text}",
+            f"当前能量：{hawkins_level}",
             "当前状态：在打通手机端表达、浏览器分析和代码执行之间的接力",
             "你此刻最在意的：连续推进、低摩擦、内容复利",
         ]
     if agent_subtype == "workflow_sop":
         return [
             "表达类型：流程沉淀 / 方法确认",
-            "情绪判断：笃定、畅快",
-            "当前能量：中高",
+            f"情绪判断：{emotion_text}",
+            f"当前能量：{hawkins_level}",
             "当前状态：已经把一套 AI 协作方法从感觉变成可执行步骤",
             "你此刻最在意的：顺滑推进、稳定复现、直接出功能",
         ]
     if agent_subtype == "runtime_strategy":
         return [
             "表达类型：方法沉淀 / 架构判断",
-            "情绪判断：清晰、笃定",
-            "当前能量：中高",
+            f"情绪判断：{emotion_text}",
+            f"当前能量：{hawkins_level}",
             "当前状态：在把一次经验升级成可复用的方法",
             "你此刻最在意的：稳定性、可复用性、可传递性",
         ]
@@ -449,14 +529,14 @@ def _judgement_items(event: dict) -> List[str]:
             "你此刻更需要的：记录、整理",
         ]
 
-    emotion_text = "、".join(emotion_tags[:3]) if emotion_tags else "平稳"
+    emotion_text = "、".join(infer_emotion_words(event))
     state_text = "、".join(state_tags[:3]) if state_tags else scene_type
     need_text = _display_needs(needs)
     type_text = _EVENT_TYPE_LABELS.get(event_type, "自我表达")
     return [
         f"表达类型：{type_text} / {scene_type}",
         f"情绪判断：{emotion_text}",
-        f"当前能量：{intensity}",
+        f"当前能量：{infer_hawkins_level(event)}",
         f"当前状态：{state_text}",
         f"你此刻更需要的：{need_text}",
     ]
@@ -469,6 +549,12 @@ def _content_items(event: dict) -> List[str]:
 
 def _takeaway_items(event: dict) -> List[str]:
     agent_subtype = detect_agent_strategy_subtype(event)
+    if agent_subtype == "feature_debug":
+        return [
+            "你现在不是在追求一步到位，而是在承认维度还没调齐的前提下，先做一轮真实验收。",
+            "这条里真正形成的判断是：卡片反馈功能已经到了可以开始试的阶段，但你对当前效果的预期仍然很克制。",
+            "你不是在单纯试功能，而是在用一次真实输入，倒逼 event schema 和反馈层继续往贴近你自己的方向迭代。",
+        ]
     if agent_subtype == "assetization":
         return [
             "你不只是在开发功能，而是在把整个开发过程、能力文件和说明沉淀成一个可迁移的能力资产层。",
@@ -537,6 +623,11 @@ def _takeaway_items(event: dict) -> List[str]:
 
 def _value_items(event: dict) -> List[str]:
     agent_subtype = detect_agent_strategy_subtype(event)
+    if agent_subtype == "feature_debug":
+        return [
+            "这条对你重要，不只是因为你在测试功能，而是因为你已经从设计讨论跨进了真实验收阶段。",
+            "它和你当前的 Hermes / LifeOS 建设直接相关，因为每一次真实测试，都会反向暴露标题系统、反馈层、字段层和路由层哪里还不够像你。",
+        ]
     if agent_subtype == "assetization":
         return [
             "这条真正重要的地方，是你把“开发完成”往前推了一层，变成了“能力被收纳、被管理、被版本化、能被新 agent 接力”。",
@@ -595,6 +686,12 @@ def _value_items(event: dict) -> List[str]:
 
 def _action_items(event: dict) -> List[str]:
     agent_subtype = detect_agent_strategy_subtype(event)
+    if agent_subtype == "feature_debug":
+        return [
+            "把这次返回按标题记忆度、问答配对度、内容贴身度、人我关系度、结构解释度、行动开发感 6 个维度逐项打分。",
+            "把最明显失真的地方标出来，优先改标题系统、情绪判断和下一步建议这三层。",
+            "把这条样本保留为“卡片反馈调试样本 001”，后面继续作为回归用例反复验证。",
+        ]
     if agent_subtype == "assetization":
         return [
             "把“文档留存 + 专属文件夹 + Git 管理 + GitHub 发布 + Hermes 同步”沉淀成固定发布规范。",
@@ -668,6 +765,12 @@ def _action_items(event: dict) -> List[str]:
 
 def _help_items(event: dict) -> List[str]:
     agent_subtype = detect_agent_strategy_subtype(event)
+    if agent_subtype == "feature_debug":
+        return [
+            "我可以帮你把这次返回逐区打分，并把问题直接回写到反馈生成器。",
+            "我可以继续把这条样本变成标题生成、问答配对、情绪映射的回归用例。",
+            "我可以直接继续改代码并部署到 Hermes，再让你测下一轮。",
+        ]
     if agent_subtype == "assetization":
         return [
             "我可以帮你把这套能力资产发布规范整理成一份固定模板。",

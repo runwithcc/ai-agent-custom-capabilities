@@ -383,13 +383,17 @@ def infer_energy_state(event: Dict[str, Any]) -> str:
     raw_text = normalize_text(event.get("raw_text"))
     intensity = normalize_text(event.get("intensity"))
     special_flags = split_tags(event.get("special_flags") or event.get("special_flag"))
-    if "low_energy" in special_flags or re.search(r"累|疲惫|透支|没劲|困", raw_text):
-        return "低能量"
-    if intensity == "high" or re.search(r"兴奋|特别有劲|特别想|超级|飞起来", raw_text):
-        return "高能量"
+    if re.search(r"爱|温暖|幸福|孩子", raw_text):
+        return "爱（500）"
+    if re.search(r"调试|测试|验收|判断|分析|字段|schema|流程|试试看|不会那么理想|不可能那么清楚", raw_text):
+        return "理性（400）"
+    if intensity == "high" or re.search(r"兴奋|特别有劲|特别想|超级|飞起来|wow|太好了", raw_text, re.IGNORECASE):
+        return "意愿（310）"
+    if "low_energy" in special_flags or re.search(r"累|疲惫|透支|没劲|困|担心|焦虑|不安", raw_text):
+        return "勇气（200）"
     if re.search(r"一方面|另一方面|拉扯|矛盾", raw_text):
-        return "混合"
-    return "中能量"
+        return "中性（250）"
+    return "中性（250）"
 
 
 def infer_role_signals(event: Dict[str, Any]) -> List[str]:
@@ -630,11 +634,17 @@ def build_phase1_feedback_row(event: Dict[str, Any]) -> Dict[str, Any]:
         if not items:
             continue
         if "关键内容" in section_title:
+            if not heard_summary:
+                heard_summary = items[0]
+        elif "真正重要" in section_title:
             insight_note = items[0]
         elif "行动方向" in section_title:
             next_step = items[0]
         elif "继续帮你做些什么" in section_title:
             followup_question = items[0]
+    if not heard_summary and sections:
+        first_items = sections[0].get("items") or []
+        heard_summary = normalize_text(first_items[0]) if first_items else ""
     return {
         "feedback_id": f"fb_{normalize_text(event.get('event_id'))}",
         "event_id": normalize_text(event.get("event_id")),

@@ -186,3 +186,36 @@
 针对以上标准，新增文档：
 
 - [feedback-scoring-rubric-v2.md](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/capabilities/lifeos-phase1/feedback-scoring-rubric-v2.md)
+
+## 10. 追加实现：按用户评分标准重写反馈生成关键规则
+
+本轮已经把部分评分标准直接落进代码：
+
+1. 标题生成更新
+- `feature_debug` 场景新增：
+  - `连续调试卡片反馈功能，当前初期阶段预期不会很高`
+- 其它 Agent 相关场景也从抽象句改成了更可记忆的动作标题
+
+2. 副标题更新
+- 主标题不再随手配一句解释
+- 开始按“问题 -> 答案”结构反推副标题
+
+3. 情绪与能量更新
+- 情绪判断从泛化表达升级为更具体的情绪词汇
+- `energy_state` 与判断区开始接入霍金斯意识能量层级表达
+
+4. 关键内容 / 重要性 / 下一步建议更新
+- 对 `feature_debug` 这类系统调试记录，开始明确进入：
+  - 调试
+  - 验收
+  - 打分
+  - 回归样本
+  - 反馈生成器迭代
+
+5. 数据层更新
+- `lifeos_phase1_runtime.py` 的 `insight_note` 不再默认重复 `heard_summary`
+- 优先从“这条真正重要的地方”区块抽取 insight
+
+6. 部署状态
+- 新规则已部署到真实运行中的 Hermes
+- 远端文件更新时间：`2026-04-12 06:54:19`
