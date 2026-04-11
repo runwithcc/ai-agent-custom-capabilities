@@ -11,9 +11,15 @@
 
 ## 2. 当前需要部署的文件
 
+当前真实运行实例：
+
+- 用户：`NewBornHermes`
+- 服务：`com.newbornhermes.gateway`
+- 工作目录：`/Users/NewBornHermes/.hermes/hermes-agent`
+
 远端目标目录：
 
-`/Users/hermes-svc/Agents/hermes-agent/gateway/platforms/`
+`/Users/NewBornHermes/.hermes/hermes-agent/gateway/platforms/`
 
 需要更新的文件：
 
@@ -38,13 +44,30 @@
 
 ## 4. 当前阻塞
 
-本轮实际部署没有完成，原因不是代码问题，而是外部环境问题：
+本轮排查后确认，旧阻塞判断需要更新。
 
-- 当前机器访问 `macmini-ts` 超时
-- 所以无法真正把文件发到正在运行的 Hermes 宿主机上
+当前事实是：
+
+- `macmini-ts` 仍然不通
+- 但 `macmini-lan` 已可用
+- 真正运行中的 Hermes 也不是 `hermes-svc`，而是 `NewBornHermes`
+- 当前 SSH 登录用户 `clawpool` 对目标运行目录没有直接写权限
+
+所以剩余阻塞已经收敛为：
+
+- 需要通过 `sudo` 把文件写入 `NewBornHermes` 的 Hermes 目录
+- 需要通过 `sudo launchctl kickstart -k system/com.newbornhermes.gateway` 重启服务
 
 ## 5. 已准备好的部署脚本
 
 - [deploy-lifeos-phase1-shadow-to-hermes.sh](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/scripts/deploy-lifeos-phase1-shadow-to-hermes.sh)
 
-等网络恢复后，可直接用它执行部署。
+当前脚本已经更新为：
+
+- 默认走 `macmini-lan`
+- 默认目标为 `NewBornHermes`
+- 会先上传到远端临时目录
+- 再通过 `sudo` 写入真实运行目录
+- 最后重启 `com.newbornhermes.gateway`
+
+执行脚本时，需要在远端 `sudo` 提示出现后输入 Mac mini 上 `clawpool` 的管理员密码。
