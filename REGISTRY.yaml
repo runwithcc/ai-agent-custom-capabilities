@@ -1,0 +1,32 @@
+version: "v1"
+date: "2026-04-11"
+owner: "hiddenwangcc"
+status: "active"
+
+purpose:
+  - "Store the build history of user-owned AI agent capabilities."
+  - "Keep docs, workflows, scripts, and capability indexes portable."
+  - "Allow future agents to recover project understanding from files, not only chat memory."
+
+folders:
+  sessions: "development conversation records and key discussion summaries"
+  capabilities: "capability specs, status, and implementation references"
+  workflows: "standard operating procedures for documentation and publishing"
+  templates: "templates for future notes and specs"
+  scripts: "preferred home for future dedicated helper scripts"
+
+current_capabilities:
+  - id: "lifeos_phase1_hermes_control"
+    name: "LifeOS Phase1 / Hermes 总控能力骨架"
+    status: "in_progress"
+    capability_doc: "capabilities/lifeos-phase1/README.md"
+    latest_session: "sessions/2026-04-11-hermes-lifeos-phase1-build-log.md"
+
+publishing_policy:
+  local_git_required: true
+  remote_github_required: true
+  target_repo_name: "AI 代理人自建功能"
+  current_remote_status: "not_connected"
+
+notes:
+  - "When implementation files live outside this folder, this registry must still point to them."
