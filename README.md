@@ -77,6 +77,10 @@ Owner：hiddenwangcc
 
 `AI 代理人自建功能`
 
+推荐 GitHub repo slug：
+
+`runwithcc/ai-agent-custom-capabilities`
+
 当前现实情况：
 
 - 本地仓库已存在

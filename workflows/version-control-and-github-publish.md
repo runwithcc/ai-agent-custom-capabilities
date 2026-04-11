@@ -40,6 +40,10 @@
 - GitHub 用户：`runwithcc`
 - 可见性：推荐 `private`
 
+推荐 repo slug：
+
+`ai-agent-custom-capabilities`
+
 推荐远端地址格式：
 
 `git@github.com:runwithcc/<repo-name>.git`
