@@ -119,3 +119,38 @@
 - 可被新 Agent 接手
 
 的正式资产状态。
+
+## 8. 追加问题定义：记录入库反馈链路修正
+
+在真实 Hermes 上查看连续 3 条记录入库结果后，识别出以下问题：
+
+1. 不同内容被压成同一份反馈
+- 3 条 event 的 raw 内容、路由和信号并不相同
+- 但 feedback title / summary / suggestion 几乎完全一致
+- 根因：`record_feedback_contract.py` 对 `Agent` / `Codex` / `Hermes` 相关表达的分类过宽，导致大量内容被压进同一个 `agent strategy note` 模板
+
+2. `record_only` 与实际反馈行为不一致
+- 数据库里 `feedback_mode=record_only`
+- 但前台链路仍然会构造完整反馈卡片并尝试发送
+- 根因：record-ingest 前台反馈扩展逻辑与 Phase1 shadow write 的 `feedback_mode` 判定没有对齐
+
+3. 飞书卡片链路不够稳
+- 日志中出现过：`AttributeError: 'FeishuAdapter' object has no attribute 'send_card'`
+- 这会导致记录入库链路在发卡片时直接报错
+- 根因：前台卡片发送缺少安全降级
+
+4. 反馈生成器没有纳入当前部署资产
+- 之前部署脚本只更新 `feishu.py` 与 `lifeos_phase1_runtime.py`
+- 实际控制反馈内容的 `record_feedback_contract.py` 没有一起纳管和部署
+
+### 本轮修正动作
+
+1. 收窄 `agent strategy note` 判定范围
+2. 新增更细的子类型：
+- `assetization`
+- `mobile_handoff`
+- `workflow_sop`
+- `runtime_strategy`
+3. 让 record-ingest 在“内容明显需要反馈”但原始 `output_mode=仅记录` 时自动提升为 `轻反馈`
+4. 让飞书卡片发送在 `send_card` 不可用时自动降级回文本
+5. 把 `record_feedback_contract.py` 纳入专属资产目录与正式部署脚本

@@ -1,0 +1,779 @@
+from __future__ import annotations
+
+import re
+from typing import Any, Dict, List
+
+_EVENT_TYPE_LABELS = {
+    "self_expression": "自我表达",
+    "capture": "记录留存",
+    "request": "带请求的表达",
+}
+
+_NEED_LABELS = {
+    "rest": "休息",
+    "clarity": "澄清",
+    "support": "支持",
+    "capture": "记录",
+    "ritual": "纪念",
+    "action": "行动",
+    "expression": "表达",
+    "organization": "整理",
+    "feedback": "反馈",
+    "help": "求助",
+    "guidance": "建议",
+    "decision": "判断",
+}
+
+
+def normalize_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        value = "，".join(str(item).strip() for item in value if str(item).strip())
+    return re.sub(r"\s+", " ", str(value)).strip()
+
+
+def split_tag_text(value: Any) -> List[str]:
+    text = normalize_text(value)
+    if not text:
+        return []
+    parts = [item.strip() for item in re.split(r"\s*[,，]\s*", text) if item.strip()]
+    return unique_list(parts)
+
+
+def unique_list(values: List[str]) -> List[str]:
+    seen = set()
+    result: List[str] = []
+    for value in values:
+        item = str(value).strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
+
+
+def extract_first_sentence(raw_text: str, limit: int = 72) -> str:
+    if not raw_text:
+        return ""
+    parts = [segment.strip() for segment in re.split(r"[。！？!?；;\n]+", raw_text) if segment.strip()]
+    summary = parts[0] if parts else raw_text
+    return summary if len(summary) <= limit else summary[: limit - 1] + "…"
+
+
+def _is_agent_runtime_discussion(raw_text: str) -> bool:
+    raw_text = normalize_text(raw_text)
+    if not raw_text:
+        return False
+    assistant_markers = r"codex|openclaw|hermes|claude ?code|chatgpt|atlas|bot|agent|机器人"
+    runtime_markers = r"代码层|源码|提示词|llm|架构|schema|字段名|路由|服务器|部署|模块|工作流|流程|步骤|插件|github|repo|版本管理|同步到 ?github|文档留存|专门的文件夹"
+    if re.search(assistant_markers, raw_text, re.IGNORECASE) and re.search(runtime_markers, raw_text, re.IGNORECASE):
+        return True
+    if re.search(assistant_markers, raw_text, re.IGNORECASE):
+        if re.search(r"读书|阅读|学习|记录我的想法|项目负责人|背景信息|阶段的重点|怎么做|每天准备怎么调整|辅助我进行阅读", raw_text):
+            return False
+    return False
+
+
+def is_agent_strategy_note(event: dict) -> bool:
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    topic_tags = split_tag_text(event.get("topic_tags"))
+    return (
+        any(tag in topic_tags for tag in ("Agent协作", "系统", "架构"))
+        and _is_agent_runtime_discussion(raw_text)
+    ) or _is_agent_runtime_discussion(raw_text)
+
+
+def detect_agent_strategy_subtype(event: dict) -> str:
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    if not is_agent_strategy_note(event):
+        return ""
+    asset_score = sum(
+        1
+        for pattern in (
+            r"文档留存",
+            r"专门的文件夹",
+            r"版本管理",
+            r"同步到 ?github",
+            r"新的 agent",
+            r"可移动走",
+        )
+        if re.search(pattern, raw_text, re.IGNORECASE)
+    )
+    workflow_score = sum(
+        1
+        for pattern in (
+            r"形成了一个逻辑",
+            r"①|②|③|④|⑤|⑥",
+            r"步骤",
+            r"流程",
+            r"逻辑过程",
+            r"落到 agent",
+        )
+        if re.search(pattern, raw_text)
+    )
+    if asset_score >= 2:
+        return "assetization"
+    if workflow_score >= 2:
+        return "workflow_sop"
+    if re.search(r"github|repo|git|版本管理|文档留存|专门的文件夹|同步到 ?github|可移动走|新的 agent", raw_text, re.IGNORECASE):
+        return "assetization"
+    if re.search(r"atlas|浏览器|手机|mac|waylog|插件|文章|复利|接着 .*codex|接着 mac 上的 codex", raw_text, re.IGNORECASE):
+        return "mobile_handoff"
+    return "runtime_strategy"
+
+
+def is_family_milestone_note(event: dict) -> bool:
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    topic_tags = split_tag_text(event.get("topic_tags"))
+    return bool(re.search(r"生日|周岁", raw_text)) and any(tag in topic_tags for tag in ("家庭", "孩子"))
+
+
+def is_family_daily_moment(event: dict) -> bool:
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    topic_tags = split_tag_text(event.get("topic_tags"))
+    return bool(re.search(r"长寿面|第[二三四]碗|锅里做了好多|盛了一份", raw_text)) and any(
+        tag in topic_tags for tag in ("家庭", "日常片段", "关系")
+    )
+
+
+def is_family_daily_joy_note(event: dict) -> bool:
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    topic_tags = split_tag_text(event.get("topic_tags"))
+    return bool(
+        re.search(
+            r"接孩子放学|放学|小狗狗|狗狗|蹦蹦跳跳|朝我奔跑过来|朝我跑过来|像小鸟一样|书包都没有背|作业都完成了",
+            raw_text,
+        )
+    ) and any(tag in topic_tags for tag in ("家庭", "孩子", "宠物", "日常片段", "关系"))
+
+
+def is_collaborative_method_note(event: dict) -> bool:
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    topic_tags = split_tag_text(event.get("topic_tags"))
+    return bool(
+        re.search(r"共同学习|相互学习|做时学|学习方案|彼此在尝试着一些新方法|大家都可以相互学习|模式实在是太好了|有非常有价值的事情", raw_text)
+    ) or (
+        "学习" in topic_tags
+        and bool(re.search(r"方法|模式|方案|启发|价值", raw_text))
+    )
+
+
+def is_stability_leadership_note(event: dict) -> bool:
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    topic_tags = split_tag_text(event.get("topic_tags"))
+    return bool(
+        re.search(
+            r"冥想|回到自己稳定的状态|把自己稳定住再去|更注重自己状态的稳定|先稳住自己|稳定住再去和大家交流|状态的稳定",
+            raw_text,
+        )
+    ) or any(tag in topic_tags for tag in ("人物观察", "稳定机制", "领导方式"))
+
+
+def is_learning_workflow_note(event: dict) -> bool:
+    if is_collaborative_method_note(event):
+        return False
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    topic_tags = split_tag_text(event.get("topic_tags"))
+    return bool(
+        re.search(r"读书|阅读|《好好思考》|记录我的想法|辅助我进行阅读|从开始阅读就发一条消息|不断地发消息|把背景信息同步给机器人|项目负责人", raw_text)
+    ) or (
+        "学习" in topic_tags
+        and bool(re.search(r"阅读|读书|方法|思路|试试看", raw_text))
+    )
+
+
+def _translate_intensity(value: str) -> str:
+    return {"low": "低", "medium": "中", "high": "高"}.get(value, value or "中")
+
+
+def _display_needs(values: List[str]) -> str:
+    if not values:
+        return "留存"
+    return "、".join(_NEED_LABELS.get(value, value) for value in values[:3])
+
+
+def _header_template(event: dict) -> str:
+    if is_agent_strategy_note(event):
+        return "green"
+    if is_stability_leadership_note(event):
+        return "green"
+    if is_family_daily_joy_note(event):
+        return "green"
+    if is_learning_workflow_note(event):
+        return "green"
+    if is_collaborative_method_note(event):
+        return "green"
+    if is_family_milestone_note(event):
+        return "red"
+    if is_family_daily_moment(event):
+        return "green"
+    dailynote = event.get("dailynote_sync")
+    if isinstance(dailynote, dict) and dailynote.get("success"):
+        return "green"
+    if isinstance(dailynote, dict) and dailynote.get("fallback_to_openclaw"):
+        return "orange"
+    if isinstance(dailynote, dict) and dailynote.get("skipped"):
+        return "blue"
+    return "wathet"
+
+
+def _ensure_question_prefix(text: str) -> str:
+    text = normalize_text(text)
+    if not text:
+        return "Q: 这条内容里最值得被看见的核心到底是什么？"
+    if text.startswith("Q:"):
+        return text
+    return f"Q: {text}"
+
+
+def strip_question_prefix(text: str) -> str:
+    text = normalize_text(text)
+    return re.sub(r"^Q:\s*", "", text)
+
+
+def _header_copy(event: dict) -> tuple[str, str]:
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    scene_type = normalize_text(event.get("scene_type")) or "记录"
+    first = extract_first_sentence(raw_text, limit=28)
+    dailynote = event.get("dailynote_sync")
+    agent_subtype = detect_agent_strategy_subtype(event)
+
+    if agent_subtype == "assetization":
+        return (
+            "🧱 真正开始稳定复利的，不只是功能，而是能力资产开始被沉淀了",
+            _ensure_question_prefix("怎样把一次次开发成果，真正变成可迁移、可版本化、可持续接力的能力资产？"),
+        )
+    if agent_subtype == "mobile_handoff":
+        return (
+            "📲 真正变强的不是单点工具，而是手机端和代码端开始接力配合",
+            _ensure_question_prefix("怎样让手机上的表达、浏览器里的分析和 Codex 的执行形成一条不中断的推进链路？"),
+        )
+    if agent_subtype == "workflow_sop":
+        return (
+            "🪜 真正高效的地方，是你已经把 Agent 协作长成了一条可反复执行的流程",
+            _ensure_question_prefix("怎样把“有感就发 -> AI 理解 -> Codex 落地 -> GitHub 管理 -> Agent 验证”沉淀成长期稳定的 SOP？"),
+        )
+    if agent_subtype == "runtime_strategy":
+        return (
+            "💡 稳定效果来自直达结构与代码层，而不是反复调 bot",
+            _ensure_question_prefix("为什么有些 AI Agent 调了很多次，效果还是不稳定？"),
+        )
+    if is_stability_leadership_note(event):
+        return (
+            "💡 真正成熟的推进者，会先稳住自己，再去处理复杂事情",
+            _ensure_question_prefix("为什么有些人事情很多、变化很多，却仍然能把状态和事情一起做稳？"),
+        )
+    if is_learning_workflow_note(event):
+        return (
+            "💡 把阅读过程交给 AI 持续接住，理解就能边读边积累",
+            _ensure_question_prefix("怎样才能让阅读不是读完就散，而是一路读一路长出理解？"),
+        )
+    if is_collaborative_method_note(event):
+        return (
+            "💡 团队真正被激活，是因为方法开始在协作里流动",
+            _ensure_question_prefix("为什么有些团队会越做越会学，而且越学越能打？"),
+        )
+    if is_family_milestone_note(event):
+        return (
+            "💛 真正值得留下来的，是这一天你最想对孩子说的话",
+            _ensure_question_prefix("孩子来到 10 岁这个节点，什么才是很多年后还会留下力量的礼物？"),
+        )
+    if is_family_daily_joy_note(event):
+        return (
+            "🏡 真正值得留下来的，是孩子朝你奔跑过来的那一刻",
+            _ensure_question_prefix("为什么有些再普通不过的放学路上，会一下子把一家人的幸福感点亮？"),
+        )
+    if is_family_daily_moment(event):
+        return (
+            "🍜 真正让人舍不得忘的，是被家里接住的那个早晨",
+            _ensure_question_prefix("为什么一个看起来普通的早晨，会在心里留下那么深的画面感？"),
+        )
+
+    if isinstance(dailynote, dict) and dailynote.get("success"):
+        if scene_type == "启发":
+            return (
+                "💡 这条内容真正留下来的，是一条可复用的方法",
+                _ensure_question_prefix("这次经历里，最值得被沉淀下来继续复用的方法是什么？"),
+            )
+        if scene_type == "复盘":
+            return (
+                "🧭 真正该留下来的，不是结果，而是下次还能继续用的方法",
+                _ensure_question_prefix("这次经历过去之后，什么才是最值得下次继续带走的？"),
+            )
+        if scene_type == "情绪":
+            return (
+                "💬 这份感受真正想提醒你的，是那个还没被说透的核心",
+                _ensure_question_prefix("这份感受背后，真正想被你看见的到底是什么？"),
+            )
+        return (
+            "📝 真正值得留下来的，不只是信息，而是这条记录背后的意义",
+            _ensure_question_prefix("这条记录里，最值得你以后反复回看的核心是什么？"),
+        )
+    if isinstance(dailynote, dict) and dailynote.get("fallback_to_openclaw"):
+        return ("📥 这条内容已经先被接住了", _ensure_question_prefix("这条内容后续最值得展开的一层是什么？"))
+    if isinstance(dailynote, dict) and dailynote.get("skipped"):
+        return ("🗂️ 这条内容已经先被记下了", _ensure_question_prefix("这条内容里最该被继续展开的点是什么？"))
+
+    if scene_type == "启发":
+        return (
+            "💡 这条启发真正重要的，是它已经在长成一条方法",
+            _ensure_question_prefix(
+                f"这段经历里，什么值得从灵光一闪变成稳定可用的方法？{'' if not first else f' {first}'}"
+            ),
+        )
+    if scene_type == "情绪":
+        return (
+            "💬 这份感受真正重要的，是它在替你指出一个更深的需要",
+            _ensure_question_prefix(
+                f"这份感受背后，真正想被接住的是什么？{'' if not first else f' {first}'}"
+            ),
+        )
+    if scene_type == "复盘":
+        return (
+            "🧭 这次复盘真正有价值的，是它在帮你沉淀下一次会更稳的方法",
+            _ensure_question_prefix(
+                f"这次经历过后，什么才是最值得被带走的？{'' if not first else f' {first}'}"
+            ),
+        )
+    return (
+        "📝 这条记录真正有价值的，是它在帮你留下一个以后还能继续用的抓手",
+        _ensure_question_prefix(
+            f"这条记录里，什么才是最值得你以后回看的？{'' if not first else f' {first}'}"
+        ),
+    )
+
+
+def _human_tags(event: dict) -> List[str]:
+    agent_subtype = detect_agent_strategy_subtype(event)
+    if agent_subtype == "assetization":
+        return ["能力资产化", "版本管理", "系统建设"]
+    if agent_subtype == "mobile_handoff":
+        return ["移动接力", "工作流", "内容复利"]
+    if agent_subtype == "workflow_sop":
+        return ["Agent协作", "SOP", "推进链路"]
+    if agent_subtype == "runtime_strategy":
+        return ["Agent协作", "稳定机制", "操作方案"]
+    if is_stability_leadership_note(event):
+        return ["人物观察", "稳定机制", "领导方式"]
+    if is_learning_workflow_note(event):
+        return ["阅读方法", "AI辅助", "学习流程"]
+    if is_collaborative_method_note(event):
+        return ["启发", "共同学习", "方法模式"]
+    if is_family_milestone_note(event):
+        return ["家庭纪念", "成长节点", "爱"]
+    if is_family_daily_joy_note(event):
+        return ["家庭日常", "孩子", "幸福片段"]
+    if is_family_daily_moment(event):
+        return ["家庭日常", "被照顾", "烟火气"]
+    scene_type = normalize_text(event.get("scene_type"))
+    topic_tags = split_tag_text(event.get("topic_tags"))
+    emotion_tags = split_tag_text(event.get("emotion_tags"))
+    candidates = topic_tags[:2] + emotion_tags[:1]
+    if scene_type and scene_type not in candidates and scene_type != "记录":
+        candidates.insert(0, scene_type)
+    return unique_list(candidates)[:3]
+
+
+def _judgement_items(event: dict) -> List[str]:
+    event_type = normalize_text(event.get("event_type"))
+    scene_type = normalize_text(event.get("scene_type")) or "记录"
+    emotion_tags = split_tag_text(event.get("emotion_tags"))
+    state_tags = split_tag_text(event.get("state_tags"))
+    needs = split_tag_text(event.get("needs"))
+    intensity = _translate_intensity(normalize_text(event.get("intensity")).lower())
+    agent_subtype = detect_agent_strategy_subtype(event)
+
+    if agent_subtype == "assetization":
+        return [
+            "表达类型：系统建设 / 能力资产化",
+            "情绪判断：清晰、满意",
+            "当前能量：中高",
+            "当前状态：在把一次开发过程升级成可迁移、可管理的长期资产",
+            "你此刻最在意的：留存、版本管理、未来接力",
+        ]
+    if agent_subtype == "mobile_handoff":
+        return [
+            "表达类型：工作流启发 / 协作设计",
+            "情绪判断：兴奋、打开",
+            "当前能量：高",
+            "当前状态：在打通手机端表达、浏览器分析和代码执行之间的接力",
+            "你此刻最在意的：连续推进、低摩擦、内容复利",
+        ]
+    if agent_subtype == "workflow_sop":
+        return [
+            "表达类型：流程沉淀 / 方法确认",
+            "情绪判断：笃定、畅快",
+            "当前能量：中高",
+            "当前状态：已经把一套 AI 协作方法从感觉变成可执行步骤",
+            "你此刻最在意的：顺滑推进、稳定复现、直接出功能",
+        ]
+    if agent_subtype == "runtime_strategy":
+        return [
+            "表达类型：方法沉淀 / 架构判断",
+            "情绪判断：清晰、笃定",
+            "当前能量：中高",
+            "当前状态：在把一次经验升级成可复用的方法",
+            "你此刻最在意的：稳定性、可复用性、可传递性",
+        ]
+    if is_stability_leadership_note(event):
+        return [
+            "表达类型：人物观察 / 方法启发",
+            "情绪判断：理解、欣赏",
+            "当前能量：高",
+            "当前状态：从观察一个人，提炼出一种更成熟的做事方式",
+            "你此刻更需要的：整理、沉淀",
+        ]
+    if is_family_daily_joy_note(event):
+        return [
+            "表达类型：生活片段 / 触动",
+            "情绪判断：开心、温暖",
+            "当前能量：中高",
+            "当前状态：被一个很有画面感的家庭瞬间打动",
+            "你此刻更需要的：记录、留存",
+        ]
+    if is_learning_workflow_note(event):
+        return [
+            "表达类型：自我表达 / 启发",
+            "情绪判断：轻松、振奋",
+            "当前能量：中高",
+            "当前状态：从困惑走向了一个可尝试的新方法",
+            "你此刻更需要的：行动、整理",
+        ]
+    if is_collaborative_method_note(event):
+        return [
+            "表达类型：自我表达 / 启发",
+            "情绪判断：振奋",
+            "当前能量：高",
+            "当前状态：在看见一种可以放大的学习模式",
+            "你此刻更需要的：记录、整理",
+        ]
+
+    emotion_text = "、".join(emotion_tags[:3]) if emotion_tags else "平稳"
+    state_text = "、".join(state_tags[:3]) if state_tags else scene_type
+    need_text = _display_needs(needs)
+    type_text = _EVENT_TYPE_LABELS.get(event_type, "自我表达")
+    return [
+        f"表达类型：{type_text} / {scene_type}",
+        f"情绪判断：{emotion_text}",
+        f"当前能量：{intensity}",
+        f"当前状态：{state_text}",
+        f"你此刻更需要的：{need_text}",
+    ]
+
+
+def _content_items(event: dict) -> List[str]:
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    return [raw_text] if raw_text else ["这条原始记录为空。"]
+
+
+def _takeaway_items(event: dict) -> List[str]:
+    agent_subtype = detect_agent_strategy_subtype(event)
+    if agent_subtype == "assetization":
+        return [
+            "你不只是在开发功能，而是在把整个开发过程、能力文件和说明沉淀成一个可迁移的能力资产层。",
+            "这条最关键的不是“又做了一个功能”，而是你要求文档、脚本、流程、GitHub 仓库和 Hermes 内文件夹全部对齐了。",
+            "一旦这层资产化做稳，未来即便换主 Agent，你也不会失去已经沉淀下来的系统能力。",
+        ]
+    if agent_subtype == "mobile_handoff":
+        return [
+            "你真正抓到的亮点，不是 Atlas 或 Codex 单独多强，而是它们开始形成跨设备接力的工作流了。",
+            "这条里很有价值的一层，是浏览器侧理解问题、代码侧落实功能、内容侧继续复利这三步开始串起来了。",
+            "你已经不只是在找工具，而是在找一条能让表达、执行和产出连续流动的协作链。",
+        ]
+    if agent_subtype == "workflow_sop":
+        return [
+            "你已经把自己的 Agent 协作方式压缩成了一条很清晰的执行流程：有感就发、让 ChatGPT 理解、让 Codex 落地、再回到 GitHub 和 agent 上验证。",
+            "这条最有价值的地方，不只是步骤清晰，而是你把“自己负责真实表达，Agent 负责理解和执行”分工得越来越稳定了。",
+            "这其实已经是一条可复用的个人 AI 协作 SOP，而不只是当下的一次顺手操作。",
+        ]
+    if agent_subtype == "runtime_strategy":
+        return [
+            "真正高效的做法，不是隔着 bot 反复调，而是直接去动 agent 或代码层。",
+            "如果目标是稳定发生，只靠提示词和 LLM 不够，最好落到程序、结构或源码层。",
+            "Codex / cc 这类直接接管 OpenClaw 的方式，更适合做这类底层操作。",
+        ]
+    if is_stability_leadership_note(event):
+        return [
+            "你真正看到的，不是潘总事情很多，而是他会主动把自己调回稳定，再去交流、碰撞和处理事务。",
+            "这不是一个人的临场反应，而是一种很成熟的状态管理方式：先稳自己，再做事，再对外互动。",
+            "你后面想把谈话整理给 AI 再返还给他，本质上也是在帮这种稳定机制继续发挥作用。",
+        ]
+    if is_family_daily_joy_note(event):
+        return [
+            "你真正想留下来的，不只是“接孩子放学”这件事，而是那个小狗也在、孩子也在、整个人朝你奔跑过来的完整幸福感。",
+            "这条最有力量的地方，是它特别有画面感：像小鸟一样跑过来，这一幕会让你以后回看时一下子回到当时。",
+            "后面你去加满油、一起回家，也让这条记录有了一种很完整的生活感和被照顾好的节奏。",
+        ]
+    if is_learning_workflow_note(event):
+        return [
+            "你真正抓到的，不只是“怎么读书”，而是“怎么把阅读过程变成一个持续被接住的流程”。",
+            "这条方法的关键，不是读完再总结，而是从开始阅读就持续记录、持续整理。",
+            "AI 在这里不是主角，而是一个能陪你边读边记、边读边整理的辅助结构。",
+        ]
+    if is_collaborative_method_note(event):
+        return [
+            "这不只是记录一个事例，你已经从里面提炼出了一条后续可以继续使用的方法。",
+            "真正有价值的，不是某个人单独做得好，而是大家在真实推进中可以互相学习、互相借力。",
+            "你看到的是一种“做时学”的模式，它会让方法在团队里扩散得更快。",
+        ]
+    if is_family_milestone_note(event):
+        return [
+            "这不只是生日记录，而是你在面对孩子成长节点时的爱、满足和一点不知所措。",
+            "你真正想留下来的，不只是“今天送什么”，而是“我想对他说什么”。",
+            "写信本身已经很接近这条里最好的礼物了。",
+        ]
+    if is_family_daily_moment(event):
+        return [
+            "你真正想留下来的不是“三碗面”这个事实，而是那个被家里接住的早晨。",
+            "这条里有一种自然的被照顾感，也有一点生活里的好笑。",
+            "它值得被记住，是因为它很有烟火气，也很有你们家的味道。",
+        ]
+    instant_feedback = normalize_text(event.get("instant_feedback"))
+    if instant_feedback:
+        return [instant_feedback]
+    return ["这条里有值得留存的一层，我已经先替你接住了。"]
+
+
+def _value_items(event: dict) -> List[str]:
+    agent_subtype = detect_agent_strategy_subtype(event)
+    if agent_subtype == "assetization":
+        return [
+            "这条真正重要的地方，是你把“开发完成”往前推了一层，变成了“能力被收纳、被管理、被版本化、能被新 agent 接力”。",
+            "它有价值，因为这意味着你在搭的不是一次性功能，而是能随着 LifeOS 一起长期复利的能力底座。",
+        ]
+    if agent_subtype == "mobile_handoff":
+        return [
+            "这条真正重要的地方，是你在寻找一种低摩擦、高连续性的推进方式，而不是再多装一个工具。",
+            "它有价值，因为一旦手机端、浏览器端和代码端之间开始无缝接力，你的真实表达就更容易直接变成功能和内容资产。",
+        ]
+    if agent_subtype == "workflow_sop":
+        return [
+            "这条真正重要的地方，是你已经开始把自己的 AI 协作方式做成标准流程，而不是每次临时即兴。",
+            "它有价值，因为一旦这条 SOP 稳下来，你的人生表达、系统建设和功能实现之间就会越来越短路由。",
+        ]
+    if agent_subtype == "runtime_strategy":
+        return [
+            "你真正主张的核心价值点，是“稳定性来自结构和代码层，而不是来自反复沟通”。",
+            "这有价值，因为它把一次临场经验升级成了一条可复用的方法，后面无论是协作、实现还是教学，都能直接拿来用。",
+        ]
+    if is_stability_leadership_note(event):
+        return [
+            "你真正看见的核心价值点，是一个人能不能把自己先稳住，决定了他后面交流、判断和推进事情的质量。",
+            "这有价值，因为它不是一句泛泛的感受，而是一条能直接迁移到管理、协作和日常工作的稳定机制。",
+        ]
+    if is_family_daily_joy_note(event):
+        return [
+            "这条真正重要的地方，不只是放学接回来了，而是你把一个家庭阶段里很鲜活的幸福感留住了。",
+            "这有价值，因为以后你回看时，记起的不只是事情，而是孩子朝你跑来时那种轻快、明亮和安心。",
+        ]
+    if is_learning_workflow_note(event):
+        return [
+            "你真正看见的核心，不是一本书怎么读完，而是怎样让阅读过程本身变成一个不断生成理解的系统。",
+            "这有价值，因为它把原本容易中断、容易遗忘的阅读，变成了一个可以持续积累、持续沉淀的方法。",
+        ]
+    if is_collaborative_method_note(event):
+        return [
+            "你真正主张的核心价值点，不只是发生了什么，而是团队在真实工作里可以边做边学、彼此带动。",
+            "这有价值，因为它已经不只是信息，而是一种能够帮助团队后续判断、回看或继续展开的抓手。",
+        ]
+    if is_family_milestone_note(event):
+        return [
+            "你主张的核心价值点，不是把节点过得多完整，而是把爱、纪念感和你真正想说的话留下来。",
+            "这有价值，因为很多年后真正能留下力量的，往往不是流程，而是当时你怎样认真地爱过、看见过。",
+        ]
+    if is_family_daily_moment(event):
+        return [
+            "你主张的核心价值点，是日常里那些微小但真实的被照顾感，本身就值得被记住。",
+            "这有价值，因为回头看时，往往不是大事件，而是这些细碎片段最能把一个阶段的幸福感重新带回来。",
+        ]
+    return [
+        "这条真正重要的地方，不只是发生了什么，而是你为什么会觉得它值得留住。",
+        "它的价值在于，它已经不只是信息，而是一个能帮助你后续判断、回看或继续展开的抓手。",
+    ]
+
+
+def _action_items(event: dict) -> List[str]:
+    agent_subtype = detect_agent_strategy_subtype(event)
+    if agent_subtype == "assetization":
+        return [
+            "把“文档留存 + 专属文件夹 + Git 管理 + GitHub 发布 + Hermes 同步”沉淀成固定发布规范。",
+            "给这个能力资产层补一份 onboarding 说明，让新的 agent 一进来就能读懂并接手。",
+            "后面每做出一个功能，都按同一模板补齐：设计说明、脚本、部署方式、验证方法。",
+        ]
+    if agent_subtype == "mobile_handoff":
+        return [
+            "把“手机表达 -> Atlas/ChatGPT 整理 -> Codex 落地 -> 内容复利”画成一条标准工作流。",
+            "先挑一个最值得复利的产出类型试跑，例如把一次开发对话自动沉淀成文章或方法卡。",
+            "把浏览器端和代码端各自负责什么定清楚，这条接力链会更顺。",
+        ]
+    if agent_subtype == "workflow_sop":
+        return [
+            "把你刚形成的六步逻辑整理成一张 SOP 卡，后面每次推进都按同一条链路跑。",
+            "顺手给每一步标注负责主体：你负责真实表达，ChatGPT 负责理解，Codex 负责落地，GitHub 负责版本管理，agent 负责验收。",
+            "后面再补一条异常处理规则：中间哪一步卡住了，应该回到哪里继续推进。",
+        ]
+    if agent_subtype == "runtime_strategy":
+        return [
+            "把这条沉淀成一条固定原则：不要隔着 bot 反复说，优先直达 agent 或代码层。",
+            "顺手画出一条最小操作链路，例如“需求 -> Codex -> OpenClaw 代码层 -> 生效”。",
+            "把“提示词不保证稳定，程序和代码层更稳定”写成系统约束，后面很多判断会更快。",
+        ]
+    if is_stability_leadership_note(event):
+        return [
+            "把这条沉淀成一张方法卡：先稳自己 -> 再处理事务 -> 再进入交流和碰撞。",
+            "提炼他是怎么把自己调回稳定的，比如冥想、停顿、回收注意力，这些都可以拆成具体动作。",
+            "把“聊完 -> AI 整理 -> 返还给对方”这条链路固定下来，后面这类高价值对话会更容易沉淀和复用。",
+        ]
+    if is_family_daily_joy_note(event):
+        return [
+            "给这条留一个有画面感的小标题，让你以后看到标题就能立刻回到那个场景里。",
+            "顺手补一句“我为什么这么想把这一幕记下来”，这样以后回看时会更有力量。",
+            "把这类孩子、宠物、回家路上的幸福片段继续积累下去，它们会慢慢变成你很珍贵的一组家庭样本。",
+        ]
+    if is_learning_workflow_note(event):
+        return [
+            "先用一本书或一个主题试跑这套方法，不追求大而全，只验证它是不是真的能帮你持续读下去。",
+            "把“边读边记”的最小流程固定下来，例如：阅读 -> 发一条消息 -> AI 帮你留存 -> 继续推进。",
+            "等你跑顺以后，再补一份自己的阅读模板，后面会更省力。",
+        ]
+    if is_collaborative_method_note(event):
+        return [
+            "把这段内容拆成 2 到 3 个关键点，后面复用或回看都会更轻松。",
+            "如果愿意，可以顺着这条再往下追问一层，把真正最重要的点继续挖出来。",
+            "把“做时学”整理成一条可传播的方法说明，后面团队更容易复用。",
+        ]
+    if is_family_milestone_note(event):
+        return [
+            "先把那封信写出来，不求完整，只写你最想对孩子说的 3 句话。",
+            "给今天留一个可回看的纪念物，让 10 岁这个节点有一个能被保存下来的载体。",
+            "顺手记下这 10 年里你最珍惜的 3 个瞬间，后面会更容易写得深，也更容易回看。",
+        ]
+    if is_family_daily_moment(event):
+        return [
+            "给这条留一个带画面感的小标题，让你以后回看时能立刻回到那个场景里。",
+            "再补一句“我为什么想记下这一幕”，这样以后不只记得事情，也记得当时的感觉。",
+            "把这类有烟火气的小片段继续积累下去，它们会慢慢形成你生活里很有力量的一组样本。",
+        ]
+    needs = split_tag_text(event.get("needs"))
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    items: List[str] = []
+    if any(code in needs for code in ("feedback", "clarity", "help", "guidance", "decision")):
+        items.append("把这条里最关键的问题压缩成一句，后面继续展开时会更稳。")
+    if len(raw_text) >= 60:
+        items.append("把这段内容拆成 2 到 3 个关键点，后面复用或回看都会更轻松。")
+    items.append("如果你愿意，可以顺着这条再往下追问一层，把真正最重要的点继续掘出来。")
+    return unique_list(items)[:3]
+
+
+def _help_items(event: dict) -> List[str]:
+    agent_subtype = detect_agent_strategy_subtype(event)
+    if agent_subtype == "assetization":
+        return [
+            "我可以帮你把这套能力资产发布规范整理成一份固定模板。",
+            "我可以继续帮你把每次开发会话自动沉淀到专属文件夹和 GitHub。",
+            "我可以把“换 agent 也能接力”的 onboarding 文档继续补完整。",
+        ]
+    if agent_subtype == "mobile_handoff":
+        return [
+            "我可以帮你把这条跨设备工作流整理成一张清晰的流程图或说明卡。",
+            "我可以继续帮你挑出最值得先做自动化的那一步。",
+            "我可以把这条链路往“输入一次、产出多份内容资产”的方向继续设计。",
+        ]
+    if agent_subtype == "workflow_sop":
+        return [
+            "我可以帮你把这六步 SOP 压成一张真正可执行的操作卡。",
+            "我可以继续帮你给每一步补上输入、输出和异常处理规则。",
+            "我可以把这条个人 AI 协作法整理成一份更适合后续复盘和传播的说明文档。",
+        ]
+    if agent_subtype == "runtime_strategy":
+        return [
+            "我可以把这条整理成一张可复用的 SOP / 原则卡。",
+            "我可以直接把这条原则落进 Hermes / OpenClaw 的实现里。",
+            "我可以继续陪你把它拆成完整的分层方案和执行路径。",
+        ]
+    if is_stability_leadership_note(event):
+        return [
+            "我可以帮你把这条观察整理成一张“稳定机制”方法卡。",
+            "我可以陪你把这类人物观察继续提炼成可复用的管理样本。",
+            "我可以直接帮你把“谈话 -> AI整理 -> 返还”做成固定的工作流。",
+        ]
+    if is_family_daily_joy_note(event):
+        return [
+            "我可以帮你给这条取一个更有画面感的小标题。",
+            "我可以继续帮你把这类家庭幸福片段整理成长期可回看的样本集。",
+            "我可以陪你把这条再压缩成一段更适合以后回看的短记录。",
+        ]
+    if is_learning_workflow_note(event):
+        return [
+            "我可以帮你把这套阅读流程整理成一张可执行的卡片。",
+            "我可以陪你把这套方法拆成一个最小可运行版本。",
+            "我可以继续帮你把这套阅读方法沉淀成长期可复用的系统。",
+        ]
+    if is_collaborative_method_note(event):
+        return [
+            "我可以帮你把这条压缩成一个更清晰的问题。",
+            "我可以继续把这条往更深一点的洞察方向展开。",
+            "我可以把这条整理成一份更明确的行动清单。",
+        ]
+    if is_family_milestone_note(event):
+        return [
+            "我可以帮你把这封信先起一个开头。",
+            "我可以陪你一起挑出今天最值得留下的 3 个瞬间。",
+            "我可以帮你把这条整理成一份更完整的纪念卡片。",
+        ]
+    if is_family_daily_moment(event):
+        return [
+            "我可以帮你把这条压缩成一个更有画面感的标题。",
+            "我可以陪你把这类生活片段整理成一个长期的家庭样本集。",
+            "我可以继续帮你从这条里提炼更细的关系感和生活感。",
+        ]
+    return [
+        "我可以帮你把这条压缩成一个更清晰的问题。",
+        "我可以继续把这条往深一点的洞察方向展开。",
+        "我可以把这条整理成一份更明确的行动清单。",
+    ]
+
+
+def build_record_feedback_contract(event: dict) -> Dict[str, Any]:
+    title, subtitle = _header_copy(event)
+    sections = [
+        {"title": "🧾 内容", "items": _content_items(event)},
+        {"title": "🧭 我对这条的判断", "items": _judgement_items(event)},
+        {"title": "🎯 我替你提炼出的关键内容", "items": _takeaway_items(event)},
+        {"title": "💡 这条真正重要的地方", "items": _value_items(event)},
+        {"title": "🪜 下一步行动方向的建议", "items": _action_items(event)},
+        {"title": "🤝 你需要我继续帮你做些什么吗？", "items": _help_items(event)},
+    ]
+
+    note_text = ""
+    status = event.get("status")
+    if isinstance(status, dict) and normalize_text(status.get("archive")) == "failed":
+        note_text = "归档出了点问题，我会继续补处理。"
+
+    return {
+        "header_template": _header_template(event),
+        "title": title,
+        "subtitle": subtitle,
+        "tags": _human_tags(event),
+        "summary": _takeaway_items(event)[0],
+        "sections": sections,
+        "note_text": note_text,
+    }
+
+
+def render_record_feedback_text(contract: Dict[str, Any]) -> str:
+    lines = [contract.get("title", "").strip(), contract.get("subtitle", "").strip()]
+    for section in contract.get("sections", []):
+        title = normalize_text(section.get("title"))
+        items = section.get("items") or []
+        if title:
+            lines.append(title)
+        for index, item in enumerate(items, start=1):
+            text = normalize_text(item)
+            if text:
+                lines.append(f"{index}. {text}")
+    note_text = normalize_text(contract.get("note_text"))
+    if note_text:
+        lines.append(f"补充说明：{note_text}")
+    return "\n".join(line for line in lines if line).strip()

@@ -25,11 +25,13 @@
 
 - `feishu.py`
 - `lifeos_phase1_runtime.py`
+- `record_feedback_contract.py`
 
 其中：
 
 - `feishu.py` 负责把影子写入挂到记录入库链路
 - `lifeos_phase1_runtime.py` 负责 SQLite + Markdown 影子写入
+- `record_feedback_contract.py` 负责把 event schema 翻译成更贴近你的即时反馈文案与卡片内容
 
 ## 3. 对主逻辑的影响边界
 
@@ -68,6 +70,7 @@
 - 默认目标为 `NewBornHermes`
 - 会先上传到远端临时目录
 - 再通过 `sudo` 写入真实运行目录
+- 会同时更新 `record_feedback_contract.py`
 - 最后重启 `com.newbornhermes.gateway`
 
 执行脚本时，需要在远端 `sudo` 提示出现后输入 Mac mini 上 `clawpool` 的管理员密码。

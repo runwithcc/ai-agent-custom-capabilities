@@ -102,8 +102,10 @@ from gateway.platforms.base import (
 
 from gateway.platforms.feeling_intake import (
     build_openclaw_archive_event,
+    build_record_feedback_lead,
     build_record_ingest_card,
     build_record_ingest_reply,
+    should_expand_record_feedback,
     split_record_prefix,
     write_openclaw_fanout_file,
 )
@@ -2081,6 +2083,8 @@ class FeishuAdapter(BasePlatformAdapter):
         archive_event: Optional[dict] = None
         try:
             archive_event = build_openclaw_archive_event("feishu_record", delivery_id, payload)
+            if str(archive_event.get("output_mode") or "").strip() == "仅记录" and should_expand_record_feedback(archive_event):
+                archive_event["output_mode"] = "轻反馈"
             dailynote_result = await asyncio.to_thread(
                 sync_event_to_dailynote,
                 archive_event,
@@ -2092,8 +2096,11 @@ class FeishuAdapter(BasePlatformAdapter):
                 await asyncio.to_thread(persist_phase1_shadow_records, archive_event, logger)
             except Exception:
                 logger.warning("[Feishu] lifeos phase1 shadow write failed for message_id=%s", event.message_id, exc_info=True)
-            reply_text = build_record_ingest_reply(archive_event)
-            card_payload = build_record_ingest_card(archive_event)
+            if should_expand_record_feedback(archive_event):
+                reply_text = build_record_ingest_reply(archive_event)
+                card_payload = build_record_ingest_card(archive_event)
+            else:
+                reply_text = build_record_feedback_lead(archive_event)
             logger.info(
                 "[Feishu] direct record-ingest reply event=%s message_id=%s",
                 archive_event.get("event_id", ""),
@@ -2111,8 +2118,9 @@ class FeishuAdapter(BasePlatformAdapter):
                     "这条我先替你接住了，但刚才系统在入库时出了点小问题。\n"
                     "你可以稍后再发一次，或者让我继续帮你排查。"
                 )
-        if card_payload:
-            result = await self.send_card(
+        send_card = getattr(self, "send_card", None)
+        if card_payload and callable(send_card):
+            result = await send_card(
                 chat_id=getattr(event.source, "chat_id", "") or "",
                 card=card_payload,
                 reply_to=event.message_id,
@@ -2120,6 +2128,8 @@ class FeishuAdapter(BasePlatformAdapter):
             if result.success:
                 return
             logger.warning("[Feishu] Card delivery failed for record-ingest message_id=%s; falling back to text", event.message_id)
+        elif card_payload:
+            logger.warning("[Feishu] Card delivery skipped because send_card is unavailable; falling back to text")
 
         await self.send(
             chat_id=getattr(event.source, "chat_id", "") or "",

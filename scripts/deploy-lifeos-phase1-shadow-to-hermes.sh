@@ -20,6 +20,8 @@ scp "${ASSET_ROOT}/runtime-host-overrides/feishu.py" \
   "${SSH_ALIAS}:${REMOTE_STAGE_DIR}/feishu.py"
 scp "${ASSET_ROOT}/lifeos_phase1_runtime.py" \
   "${SSH_ALIAS}:${REMOTE_STAGE_DIR}/lifeos_phase1_runtime.py"
+scp "${ASSET_ROOT}/record_feedback_contract.py" \
+  "${SSH_ALIAS}:${REMOTE_STAGE_DIR}/record_feedback_contract.py"
 
 echo "[3/4] 写入真实运行目录并备份旧文件"
 ssh -tt "${SSH_ALIAS}" "
@@ -30,8 +32,12 @@ ssh -tt "${SSH_ALIAS}" "
   if [ -f '${REMOTE_PLATFORM_DIR}/lifeos_phase1_runtime.py' ]; then
     sudo cp '${REMOTE_PLATFORM_DIR}/lifeos_phase1_runtime.py' '${REMOTE_PLATFORM_DIR}/lifeos_phase1_runtime.py.bak-${STAMP}';
   fi &&
+  if [ -f '${REMOTE_PLATFORM_DIR}/record_feedback_contract.py' ]; then
+    sudo cp '${REMOTE_PLATFORM_DIR}/record_feedback_contract.py' '${REMOTE_PLATFORM_DIR}/record_feedback_contract.py.bak-${STAMP}';
+  fi &&
   sudo install -o '${SERVICE_USER}' -g staff -m 0644 '${REMOTE_STAGE_DIR}/feishu.py' '${REMOTE_PLATFORM_DIR}/feishu.py' &&
   sudo install -o '${SERVICE_USER}' -g staff -m 0644 '${REMOTE_STAGE_DIR}/lifeos_phase1_runtime.py' '${REMOTE_PLATFORM_DIR}/lifeos_phase1_runtime.py' &&
+  sudo install -o '${SERVICE_USER}' -g staff -m 0644 '${REMOTE_STAGE_DIR}/record_feedback_contract.py' '${REMOTE_PLATFORM_DIR}/record_feedback_contract.py' &&
   rm -rf '${REMOTE_STAGE_DIR}'
 "
 
