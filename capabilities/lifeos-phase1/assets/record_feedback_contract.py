@@ -199,8 +199,12 @@ def infer_emotion_words(event: dict) -> List[str]:
     raw_text = normalize_text(event.get("raw_text") or event.get("message"))
     emotion_tags = split_tag_text(event.get("emotion_tags"))
     emotions: List[str] = []
+    if re.search(r"很喜欢", raw_text):
+        emotions.append("喜欢")
     if re.search(r"试试看|看看效果|想试|尝试一次|希望", raw_text):
         emotions.append("期待")
+    if re.search(r"充满期待|期待啊|这会给我带来什么", raw_text):
+        emotions.extend(["期待", "兴奋"])
     if re.search(r"不会那么理想|不可能那么清楚|还没有调试|先试试看|先看看", raw_text):
         emotions.append("审慎")
     if re.search(r"终于|太好了|wow|非常开心|超级好|飞起来", raw_text, re.IGNORECASE):
@@ -222,6 +226,8 @@ def infer_hawkins_level(event: dict) -> str:
     scene_type = normalize_text(event.get("scene_type"))
     if re.search(r"爱|温暖|孩子|幸福", raw_text):
         return "爱（500）"
+    if re.search(r"充满期待|期待啊|很喜欢|想试试看|会给我带来什么", raw_text):
+        return "意愿（310）"
     if re.search(r"调试|测试|验收|判断|分析|字段名|schema|逻辑|流程|试试看|不会那么理想|不可能那么清楚", raw_text):
         return "理性（400）"
     if re.search(r"终于|太好了|wow|超级好|非常开心|很想", raw_text, re.IGNORECASE):
@@ -252,7 +258,18 @@ def is_feature_debug_note(event: dict) -> bool:
     )
 
 
+def is_multi_machine_agent_trial_note(event: dict) -> bool:
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    return bool(
+        re.search(r"MPBM1|mba|macbook", raw_text, re.IGNORECASE)
+        and re.search(r"龙虾|安装龙虾|跑龙虾", raw_text)
+        and re.search(r"办公楼|办公团队|试试看|会给我带来什么|充满期待", raw_text)
+    )
+
+
 def _header_template(event: dict) -> str:
+    if is_multi_machine_agent_trial_note(event):
+        return "green"
     if detect_agent_strategy_subtype(event) == "feature_debug":
         return "orange"
     if is_agent_strategy_note(event):
@@ -300,6 +317,11 @@ def _header_copy(event: dict) -> tuple[str, str]:
     dailynote = event.get("dailynote_sync")
     agent_subtype = detect_agent_strategy_subtype(event)
 
+    if is_multi_machine_agent_trial_note(event):
+        return (
+            "受“办公楼-办公团队”隐喻触发，开始给第二台 MPBM1 试跑龙虾",
+            _ensure_question_prefix("这次给第二台 MPBM1 装龙虾，你真正想验证的是什么？"),
+        )
     if agent_subtype == "feature_debug":
         focus = infer_feature_focus(event)
         return (
@@ -412,6 +434,8 @@ def _header_copy(event: dict) -> tuple[str, str]:
 
 
 def _human_tags(event: dict) -> List[str]:
+    if is_multi_machine_agent_trial_note(event):
+        return ["多机实验", "龙虾部署", "系统隐喻"]
     agent_subtype = detect_agent_strategy_subtype(event)
     if agent_subtype == "feature_debug":
         focus = infer_feature_focus(event)
@@ -456,6 +480,14 @@ def _judgement_items(event: dict) -> List[str]:
     emotion_text = "、".join(infer_emotion_words(event))
     hawkins_level = infer_hawkins_level(event)
 
+    if is_multi_machine_agent_trial_note(event):
+        return [
+            "表达类型：系统试验 / 多机部署启发",
+            f"情绪判断：{emotion_text}",
+            f"当前能量：{hawkins_level}",
+            "当前状态：被“办公楼-办公团队”的组织化隐喻点燃，准备把它变成自己的真实试跑。",
+            "你此刻更需要的：试跑、观察、记录变化",
+        ]
     if agent_subtype == "feature_debug":
         return [
             "表达类型：功能调试 / 早期验收",
@@ -548,6 +580,12 @@ def _content_items(event: dict) -> List[str]:
 
 
 def _takeaway_items(event: dict) -> List[str]:
+    if is_multi_machine_agent_trial_note(event):
+        return [
+            "你真正想试的，不只是再装一台机器，而是想验证多台设备一起跑起来后，是否会带来更强的组织感、并行感和生产力想象。",
+            "这条里最打动你的，不是“10 台 mba”这个数字本身，而是“每一台都是一个办公楼，里面住着一支办公团队”这个系统隐喻。",
+            "你已经开始把外部看到的一个强隐喻，转成自己的多机 agent 实验样本了。",
+        ]
     agent_subtype = detect_agent_strategy_subtype(event)
     if agent_subtype == "feature_debug":
         return [
@@ -622,6 +660,11 @@ def _takeaway_items(event: dict) -> List[str]:
 
 
 def _value_items(event: dict) -> List[str]:
+    if is_multi_machine_agent_trial_note(event):
+        return [
+            "这条对你重要，是因为它把一个外部隐喻转成了你的系统实验：你想看多机运行会不会让助手体系从单点协作走向组织化协作。",
+            "它和你的关系很近，因为你天然偏爱稳定运转的系统，而这次试跑正好在验证“更多机器、更多分工、更多并行”会不会更接近你要的那种帅气秩序感。",
+        ]
     agent_subtype = detect_agent_strategy_subtype(event)
     if agent_subtype == "feature_debug":
         return [
@@ -685,6 +728,12 @@ def _value_items(event: dict) -> List[str]:
 
 
 def _action_items(event: dict) -> List[str]:
+    if is_multi_machine_agent_trial_note(event):
+        return [
+            "把这台 MPBM1 标成“多机龙虾实验样本 002”，写清它准备承担什么角色、常驻什么任务、想观察什么变化。",
+            "为这轮试跑设 3 个观察指标：并行感有没有增强、组织感有没有变强、你自己的期待感会不会落到真实生产力上。",
+            "等它跑起来后，补一条简短复盘：这台机器更像“办公楼”，还是更像“多开了一个窗口”？",
+        ]
     agent_subtype = detect_agent_strategy_subtype(event)
     if agent_subtype == "feature_debug":
         return [
@@ -764,6 +813,12 @@ def _action_items(event: dict) -> List[str]:
 
 
 def _help_items(event: dict) -> List[str]:
+    if is_multi_machine_agent_trial_note(event):
+        return [
+            "我可以帮你把“多机龙虾实验”整理成一张实验卡，写清机器编号、角色、任务和观察指标。",
+            "我可以继续帮你把这条隐喻往 Hermes / LifeOS 的分工体系里翻译，看看后面能不能长成真正的组织结构。",
+            "我也可以陪你做下一轮复盘，判断这次试跑到底带来了真实增益，还是只是多了一台设备。",
+        ]
     agent_subtype = detect_agent_strategy_subtype(event)
     if agent_subtype == "feature_debug":
         return [
