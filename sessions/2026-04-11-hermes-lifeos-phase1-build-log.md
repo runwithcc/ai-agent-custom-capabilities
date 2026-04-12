@@ -259,4 +259,67 @@
 
 7. 当前存储状态
 - `md` 快照：已写入并更新
-- 飞书多维表格：字段与初始化脚本已准备，但当前运行链路尚未实际写入该样本，`bitable_record_id` 仍为空，说明这层还需要继续补齐
+- 飞书多维表格：已打通到既有表 `Agent 辅助我思考`，并完成历史样本回填
+
+## 12. 追加实现：打通飞书多维表格增量升级与自动写入
+
+本轮围绕用户指定的飞书多维表链接，完成了真正的写入链路闭环：
+
+1. 确认目标表
+- 使用既有 wiki 链接中的 `Agent 辅助我思考` 表
+- table_id: `tbllqiqgWQ3R1jFW`
+
+2. 字段策略
+- 不新建表
+- 不破坏旧字段
+- 在原表上增量补齐新的 LifeOS 字段：
+  - `input_type`
+  - `expression_form`
+  - `signal_type`
+  - `energy_state`
+  - `role_signals`
+  - `intentions`
+  - `assumptions`
+  - `meaning_functions`
+  - `idea_systems`
+  - `lifeos_routes`
+  - `handling_mode`
+  - `importance_level`
+  - `importance_reason`
+  - `feedback_mode`
+  - `should_continue_dialogue`
+  - `related_module_ids`
+  - `heard_summary`
+  - `card_title`
+  - `card_subtitle`
+  - `next_step_suggestion`
+  - `followup_question`
+  - `archive_markdown_path`
+
+3. 运行时写入能力
+- `lifeos_phase1_runtime.py` 新增 bitable upsert 能力
+- 写入策略：
+  - 先写 SQLite / md
+  - 再写飞书多维表格
+  - 多维表格失败不阻塞主链路
+
+4. 兼容处理
+- 继续保留旧表字段的兼容回填，例如：
+  - `fact_summary`
+  - `state_tags`
+  - `topic_tags`
+  - `need_tags`
+  - `output_mode`
+  - `instant_feedback`
+- 同时新增新 schema 的结构字段与反馈字段
+
+5. 真实修复过的兼容问题
+- `agent_status_*` 从 Hermes payload 英文状态映射到飞书单选中文状态
+- `deep_review_candidate` 改为严格布尔值，满足飞书 checkbox 类型要求
+- bitable record 更新接口改为可用的方法后，旧记录成功原地更新
+
+6. 当前结果
+- Hermes 已部署新版本
+- 目标表字段已增量升级完成
+- 当前 SQLite 中 6 条 `lifeos_events` 已全部回填到飞书多维表格
+- 每条记录已有 `bitable_record_id`

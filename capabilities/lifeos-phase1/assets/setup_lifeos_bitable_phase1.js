@@ -2,8 +2,8 @@
 
 const APP_ID = process.env.FEISHU_APP_ID || "";
 const APP_SECRET = process.env.FEISHU_APP_SECRET || "";
-const APP_TOKEN = process.env.LIFEOS_BITABLE_APP_TOKEN || process.env.FEELING_BITABLE_APP_TOKEN || "";
-const EVENTS_TABLE_ID = process.env.LIFEOS_EVENTS_TABLE_ID || process.env.FEELING_BITABLE_TABLE_ID || "";
+const APP_TOKEN = process.env.LIFEOS_BITABLE_APP_TOKEN || process.env.FEELING_BITABLE_APP_TOKEN || "SjYXbzlWCar7lWsQTVbcv52LnGg";
+const EVENTS_TABLE_ID = process.env.LIFEOS_EVENTS_TABLE_ID || process.env.FEELING_BITABLE_TABLE_ID || "tbllqiqgWQ3R1jFW";
 const MODULES_TABLE_ID = process.env.LIFEOS_MODULES_TABLE_ID || "";
 const APPLY = process.argv.includes("--apply");
 const TARGET = process.argv.includes("--modules") ? "modules" : "events";
@@ -24,19 +24,39 @@ function singleSelectOptions(names) {
 }
 
 const EVENT_FIELDS = [
+  { field_name: "event_id", type: FIELD_TYPES.text },
   { field_name: "event_schema_version", type: FIELD_TYPES.text },
   { field_name: "captured_at", type: FIELD_TYPES.dateTime, property: { date_formatter: "yyyy/MM/dd HH:mm", auto_fill: false } },
   { field_name: "source", type: FIELD_TYPES.text },
+  { field_name: "source_meta_json", type: FIELD_TYPES.text },
   { field_name: "raw_text", type: FIELD_TYPES.text },
+  { field_name: "event_type", type: FIELD_TYPES.text },
+  { field_name: "scene_type", type: FIELD_TYPES.singleSelect, property: { options: singleSelectOptions(["复盘", "触动", "灵感", "情绪", "启发", "记录"]) } },
+  { field_name: "content_layers", type: FIELD_TYPES.text },
+  { field_name: "intensity", type: FIELD_TYPES.text },
+  { field_name: "fact_summary", type: FIELD_TYPES.text },
+  { field_name: "emotion_tags", type: FIELD_TYPES.text },
+  { field_name: "state_tags", type: FIELD_TYPES.text },
+  { field_name: "topic_tags", type: FIELD_TYPES.text },
+  { field_name: "need_tags", type: FIELD_TYPES.text },
+  { field_name: "intention_guess", type: FIELD_TYPES.text },
+  { field_name: "clarity_level", type: FIELD_TYPES.singleSelect, property: { options: singleSelectOptions(["低", "中", "高"]) } },
+  { field_name: "special_flag", type: FIELD_TYPES.text },
+  { field_name: "output_mode", type: FIELD_TYPES.singleSelect, property: { options: singleSelectOptions(["仅记录", "轻反馈", "深洞察", "周报池"]) } },
+  { field_name: "needs", type: FIELD_TYPES.text },
+  { field_name: "routes_to", type: FIELD_TYPES.text },
+  { field_name: "weekly_bucket", type: FIELD_TYPES.text },
+  { field_name: "deep_review_candidate", type: FIELD_TYPES.checkbox },
+  { field_name: "instant_feedback", type: FIELD_TYPES.text },
+  { field_name: "insight_note", type: FIELD_TYPES.text },
+  { field_name: "agent_status_openclaw", type: FIELD_TYPES.singleSelect, property: { options: singleSelectOptions(["待处理", "成功", "失败", "跳过"]) } },
+  { field_name: "agent_status_hermes", type: FIELD_TYPES.singleSelect, property: { options: singleSelectOptions(["待处理", "成功", "失败", "跳过"]) } },
+  { field_name: "agent_status_research", type: FIELD_TYPES.singleSelect, property: { options: singleSelectOptions(["待处理", "成功", "失败", "跳过"]) } },
   { field_name: "input_type", type: FIELD_TYPES.singleSelect, property: { options: singleSelectOptions(["内心感受/念头", "人际触动", "网络信息", "读书", "行动过程", "冥想表达", "客观事件记录"]) } },
   { field_name: "expression_form", type: FIELD_TYPES.text },
-  { field_name: "event_type", type: FIELD_TYPES.singleSelect, property: { options: singleSelectOptions(["self_expression", "capture", "request"]) } },
-  { field_name: "scene_type", type: FIELD_TYPES.singleSelect, property: { options: singleSelectOptions(["复盘", "触动", "灵感", "情绪", "启发", "记录"]) } },
-  { field_name: "signal_type", type: FIELD_TYPES.singleSelect, property: { options: singleSelectOptions(["灵感", "问题", "感受", "判断", "计划", "纪实"]) } },
-  { field_name: "emotion_tags", type: FIELD_TYPES.text },
-  { field_name: "energy_state", type: FIELD_TYPES.singleSelect, property: { options: singleSelectOptions(["低能量", "中能量", "高能量", "混合"]) } },
+  { field_name: "signal_type", type: FIELD_TYPES.singleSelect, property: { options: singleSelectOptions(["灵感", "问题", "感受", "判断", "计划", "纪实", "试验"]) } },
+  { field_name: "energy_state", type: FIELD_TYPES.text },
   { field_name: "role_signals", type: FIELD_TYPES.text },
-  { field_name: "needs", type: FIELD_TYPES.text },
   { field_name: "intentions", type: FIELD_TYPES.text },
   { field_name: "assumptions", type: FIELD_TYPES.text },
   { field_name: "meaning_functions", type: FIELD_TYPES.text },
@@ -49,8 +69,10 @@ const EVENT_FIELDS = [
   { field_name: "should_continue_dialogue", type: FIELD_TYPES.checkbox },
   { field_name: "related_module_ids", type: FIELD_TYPES.text },
   { field_name: "heard_summary", type: FIELD_TYPES.text },
-  { field_name: "insight_note", type: FIELD_TYPES.text },
+  { field_name: "card_title", type: FIELD_TYPES.text },
+  { field_name: "card_subtitle", type: FIELD_TYPES.text },
   { field_name: "next_step_suggestion", type: FIELD_TYPES.text },
+  { field_name: "followup_question", type: FIELD_TYPES.text },
   { field_name: "archive_markdown_path", type: FIELD_TYPES.text },
 ];
 

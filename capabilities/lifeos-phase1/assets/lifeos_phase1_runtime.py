@@ -7,7 +7,8 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Set
+from urllib import parse, request
 
 try:
     from gateway.platforms.record_feedback_contract import build_record_feedback_contract
@@ -163,6 +164,12 @@ CREATE TABLE IF NOT EXISTS lifeos_supervisions (
 );
 """
 
+DEFAULT_LIFEOS_BITABLE_APP_TOKEN = "SjYXbzlWCar7lWsQTVbcv52LnGg"
+DEFAULT_LIFEOS_EVENTS_TABLE_ID = "tbllqiqgWQ3R1jFW"
+_BITABLE_HTTP_TIMEOUT_SECONDS = 30
+_BITABLE_FIELD_CACHE: Dict[str, Set[str]] = {}
+_BITABLE_TOKEN_CACHE: Dict[str, Any] = {"token": "", "expires_at": 0.0, "scope": ""}
+
 
 def normalize_text(value: Any) -> str:
     if value is None:
@@ -312,6 +319,267 @@ def _upsert_module_candidate(conn: sqlite3.Connection, row: Dict[str, Any]) -> N
     merged["last_reviewed_at"] = row.get("last_reviewed_at") or existing.get("last_reviewed_at")
     merged["updated_at"] = row.get("updated_at") or existing.get("updated_at") or int(time.time() * 1000)
     _upsert(conn, "lifeos_modules", merged, "module_id")
+
+
+def _http_json(
+    url: str,
+    *,
+    data: Optional[Dict[str, Any]] = None,
+    headers: Optional[Dict[str, str]] = None,
+    method: Optional[str] = None,
+) -> Dict[str, Any]:
+    body = None if data is None else json.dumps(data, ensure_ascii=False).encode("utf-8")
+    req = request.Request(url, data=body, method=method or ("POST" if body is not None else "GET"))
+    for key, value in (headers or {}).items():
+        req.add_header(key, value)
+    with request.urlopen(req, timeout=_BITABLE_HTTP_TIMEOUT_SECONDS) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _lifeos_bitable_config() -> Optional[Dict[str, str]]:
+    if os.getenv("LIFEOS_BITABLE_SYNC_ENABLED", "1").strip().lower() in {"0", "false", "no", "off"}:
+        return None
+    app_id = os.getenv("FEISHU_APP_ID", "").strip()
+    app_secret = os.getenv("FEISHU_APP_SECRET", "").strip()
+    app_token = (
+        os.getenv("LIFEOS_BITABLE_APP_TOKEN", "").strip()
+        or os.getenv("FEELING_BITABLE_APP_TOKEN", "").strip()
+        or DEFAULT_LIFEOS_BITABLE_APP_TOKEN
+    )
+    table_id = (
+        os.getenv("LIFEOS_EVENTS_TABLE_ID", "").strip()
+        or os.getenv("FEELING_BITABLE_TABLE_ID", "").strip()
+        or DEFAULT_LIFEOS_EVENTS_TABLE_ID
+    )
+    if not app_id or not app_secret or not app_token or not table_id:
+        return None
+    return {
+        "app_id": app_id,
+        "app_secret": app_secret,
+        "app_token": app_token,
+        "events_table_id": table_id,
+    }
+
+
+def _get_bitable_token(config: Dict[str, str]) -> str:
+    scope = f"{config['app_id']}:{config['app_token']}"
+    now = time.time()
+    if _BITABLE_TOKEN_CACHE.get("token") and _BITABLE_TOKEN_CACHE.get("scope") == scope and now < float(_BITABLE_TOKEN_CACHE.get("expires_at") or 0):
+        return str(_BITABLE_TOKEN_CACHE["token"])
+    data = _http_json(
+        "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+        data={"app_id": config["app_id"], "app_secret": config["app_secret"]},
+        headers={"Content-Type": "application/json"},
+    )
+    token = normalize_text(data.get("tenant_access_token"))
+    if data.get("code") != 0 or not token:
+        raise RuntimeError(f"failed to get bitable tenant token: {data}")
+    expire_seconds = int(data.get("expire") or 7200)
+    _BITABLE_TOKEN_CACHE.update(
+        {
+            "token": token,
+            "expires_at": now + max(expire_seconds - 120, 60),
+            "scope": scope,
+        }
+    )
+    return token
+
+
+def _list_bitable_fields(config: Dict[str, str]) -> Set[str]:
+    cache_key = f"{config['app_token']}:{config['events_table_id']}"
+    cached = _BITABLE_FIELD_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    token = _get_bitable_token(config)
+    data = _http_json(
+        f"https://open.feishu.cn/open-apis/bitable/v1/apps/{config['app_token']}/tables/{config['events_table_id']}/fields?page_size=500",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if data.get("code") != 0:
+        raise RuntimeError(f"failed to list bitable fields: {data}")
+    field_names = {
+        normalize_text(item.get("field_name"))
+        for item in (data.get("data", {}).get("items") or [])
+        if normalize_text(item.get("field_name"))
+    }
+    _BITABLE_FIELD_CACHE[cache_key] = field_names
+    return field_names
+
+
+def _json_text(value: Any) -> str:
+    if not value:
+        return ""
+    try:
+        parsed = json.loads(value) if isinstance(value, str) else value
+    except Exception:
+        parsed = value
+    if isinstance(parsed, list):
+        return normalize_text(parsed)
+    if isinstance(parsed, dict):
+        return json.dumps(parsed, ensure_ascii=False, sort_keys=True)
+    return normalize_text(parsed)
+
+
+def _map_bitable_status(value: Any, *, default: str = "待处理") -> str:
+    text = normalize_text(value).lower()
+    mapping = {
+        "pending": "待处理",
+        "queued": "待处理",
+        "processing": "待处理",
+        "done": "成功",
+        "success": "成功",
+        "ok": "成功",
+        "failed": "失败",
+        "error": "失败",
+        "skipped": "跳过",
+        "not_requested": "跳过",
+    }
+    return mapping.get(text, default if default in {"待处理", "成功", "失败", "跳过"} else "待处理")
+
+
+def _bitable_fields_from_bundle(event: Dict[str, Any], bundle: Dict[str, Any]) -> Dict[str, Any]:
+    event_row = bundle["event_row"]
+    feedback_row = bundle["feedback_row"]
+    status = event.get("status") if isinstance(event.get("status"), dict) else {}
+    fields: Dict[str, Any] = {
+        "event_id": event_row["event_id"],
+        "event_schema_version": event_row["event_schema_version"],
+        "captured_at": event_row["captured_at"],
+        "source": event_row["source"],
+        "source_meta_json": event_row["source_meta_json"],
+        "raw_text": event_row["raw_text"],
+        "event_type": event_row["event_type"],
+        "scene_type": event_row["scene_type"],
+        "fact_summary": normalize_text(event.get("fact_summary")),
+        "emotion_tags": _json_text(event_row["emotion_tags_json"]) or normalize_text(event.get("emotion_tags")),
+        "state_tags": normalize_text(event.get("state_tags")),
+        "topic_tags": normalize_text(event.get("topic_tags")),
+        "need_tags": normalize_text(event.get("need_tags")),
+        "intention_guess": normalize_text(event.get("intention_guess")),
+        "clarity_level": normalize_text(event.get("clarity_level")),
+        "special_flag": normalize_text(event.get("special_flag") or event.get("special_flags")),
+        "output_mode": normalize_text(event.get("output_mode")),
+        "needs": normalize_text(event.get("needs")) or _json_text(event_row["need_signals_json"]),
+        "routes_to": normalize_text(event.get("routes_to")),
+        "weekly_bucket": normalize_text(event.get("weekly_bucket")),
+        "deep_review_candidate": bool(_is_truthy(event.get("deep_review_candidate"))),
+        "instant_feedback": normalize_text(event.get("instant_feedback")),
+        "insight_note": feedback_row["insight_note"],
+        "agent_status_openclaw": _map_bitable_status(status.get("archive")),
+        "agent_status_hermes": "成功",
+        "agent_status_research": _map_bitable_status(status.get("research")),
+        "input_type": event_row["input_type"],
+        "expression_form": event_row["expression_form"],
+        "signal_type": event_row["signal_type"],
+        "energy_state": event_row["energy_state"],
+        "role_signals": _json_text(event_row["role_signals_json"]),
+        "intentions": _json_text(event_row["intention_signals_json"]),
+        "assumptions": _json_text(event_row["assumption_signals_json"]),
+        "meaning_functions": _json_text(event_row["meaning_functions_json"]),
+        "idea_systems": _json_text(event_row["idea_systems_json"]),
+        "lifeos_routes": _json_text(event_row["lifeos_routes_json"]),
+        "handling_mode": event_row["handling_mode"],
+        "importance_level": event_row["importance_level"],
+        "importance_reason": event_row["importance_reason"],
+        "feedback_mode": event_row["feedback_mode"],
+        "should_continue_dialogue": bool(event_row["should_continue_dialogue"]),
+        "related_module_ids": _json_text(event_row["related_module_ids_json"]),
+        "heard_summary": feedback_row["heard_summary"],
+        "card_title": feedback_row["card_title"],
+        "card_subtitle": feedback_row["card_subtitle"],
+        "next_step_suggestion": feedback_row["next_step_suggestion"],
+        "followup_question": feedback_row["followup_question"],
+        "archive_markdown_path": event_row["archive_markdown_path"],
+    }
+    return fields
+
+
+def _filter_supported_bitable_fields(fields: Dict[str, Any], supported_fields: Set[str]) -> Dict[str, Any]:
+    result: Dict[str, Any] = {}
+    for key, value in fields.items():
+        if key not in supported_fields:
+            continue
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        result[key] = value
+    return result
+
+
+def _find_bitable_record(config: Dict[str, str], event_id: str) -> Optional[Dict[str, Any]]:
+    token = _get_bitable_token(config)
+    filter_expr = parse.quote(f'AND(CurrentValue.[event_id]="{event_id}")')
+    data = _http_json(
+        (
+            f"https://open.feishu.cn/open-apis/bitable/v1/apps/{config['app_token']}/tables/"
+            f"{config['events_table_id']}/records?page_size=1&filter={filter_expr}"
+        ),
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if data.get("code") != 0:
+        raise RuntimeError(f"failed to query bitable record: {data}")
+    items = data.get("data", {}).get("items") or []
+    return items[0] if items else None
+
+
+def _create_bitable_record(config: Dict[str, str], fields: Dict[str, Any]) -> str:
+    token = _get_bitable_token(config)
+    data = _http_json(
+        f"https://open.feishu.cn/open-apis/bitable/v1/apps/{config['app_token']}/tables/{config['events_table_id']}/records",
+        data={"fields": fields},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+    )
+    if data.get("code") != 0:
+        raise RuntimeError(f"failed to create bitable record: {data}")
+    return normalize_text(data.get("data", {}).get("record", {}).get("record_id"))
+
+
+def _update_bitable_record(config: Dict[str, str], record_id: str, fields: Dict[str, Any]) -> str:
+    token = _get_bitable_token(config)
+    data = _http_json(
+        (
+            f"https://open.feishu.cn/open-apis/bitable/v1/apps/{config['app_token']}/tables/"
+            f"{config['events_table_id']}/records/{record_id}"
+        ),
+        data={"fields": fields},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        method="PUT",
+    )
+    if data.get("code") != 0:
+        raise RuntimeError(f"failed to update bitable record: {data}")
+    return record_id
+
+
+def sync_event_to_bitable(event: Dict[str, Any], bundle: Dict[str, Any], logger=None) -> str:
+    config = _lifeos_bitable_config()
+    if not config:
+        return ""
+    supported_fields = _list_bitable_fields(config)
+    fields = _filter_supported_bitable_fields(_bitable_fields_from_bundle(event, bundle), supported_fields)
+    if not fields or "event_id" not in fields:
+        return ""
+    existing = _find_bitable_record(config, fields["event_id"])
+    if existing:
+        record_id = _update_bitable_record(config, normalize_text(existing.get("record_id")), fields)
+        action = "update"
+    else:
+        record_id = _create_bitable_record(config, fields)
+        action = "create"
+    if logger:
+        logger.info(
+            "[lifeos-phase1] bitable sync ok event=%s action=%s record=%s",
+            fields["event_id"],
+            action,
+            record_id,
+        )
+    return record_id
 
 
 def infer_input_type(event: Dict[str, Any]) -> str:
@@ -851,12 +1119,32 @@ def persist_phase1_shadow_records(event: Dict[str, Any], logger=None) -> Dict[st
             _upsert_module_candidate(conn, row)
         conn.commit()
 
+    bitable_record_id = ""
+    try:
+        bitable_record_id = sync_event_to_bitable(event, bundle, logger=logger)
+    except Exception:
+        if logger:
+            logger.warning(
+                "[lifeos-phase1] bitable sync failed event=%s",
+                bundle["event_row"]["event_id"],
+                exc_info=True,
+            )
+    if bitable_record_id:
+        bundle["event_row"]["bitable_record_id"] = bitable_record_id
+        with sqlite3.connect(db_path, timeout=1) as conn:
+            conn.execute(
+                "UPDATE lifeos_events SET bitable_record_id = ?, updated_at = ? WHERE event_id = ?",
+                (bitable_record_id, int(time.time() * 1000), bundle["event_row"]["event_id"]),
+            )
+            conn.commit()
+
     shadow_meta = {
         "db_path": str(db_path),
         "markdown_path": markdown_path,
         "event_schema_version": bundle["event_row"]["event_schema_version"],
         "primary_route": bundle["route_row"]["primary_route"],
         "module_ids": json.loads(bundle["route_row"]["target_module_ids_json"]),
+        "bitable_record_id": bitable_record_id,
     }
     event["lifeos_phase1"] = shadow_meta
     if logger:
