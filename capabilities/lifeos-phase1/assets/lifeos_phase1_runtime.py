@@ -636,6 +636,8 @@ def infer_signal_type(event: Dict[str, Any]) -> str:
     scene_type = normalize_text(event.get("scene_type"))
     if re.search(r"怎么办|为什么|能不能|是不是|该怎么", raw_text):
         return "问题"
+    if re.search(r"第一阶段", raw_text) and re.search(r"当前阶段", raw_text) and re.search(r"hermes|agent|api|bug", raw_text, re.IGNORECASE):
+        return "判断"
     if re.search(r"想试试看|试试看|试试|会给我带来什么|开始给.*安装|开始.*试跑|跑龙虾", raw_text):
         return "试验"
     if scene_type == "灵感":
@@ -655,8 +657,12 @@ def infer_energy_state(event: Dict[str, Any]) -> str:
     raw_text = normalize_text(event.get("raw_text"))
     intensity = normalize_text(event.get("intensity"))
     special_flags = split_tags(event.get("special_flags") or event.get("special_flag"))
+    if re.search(r"第一阶段", raw_text) and re.search(r"当前阶段", raw_text) and re.search(r"hermes|agent|api|bug", raw_text, re.IGNORECASE):
+        return "理性（400）"
     if re.search(r"爱|温暖|幸福|孩子", raw_text):
         return "爱（500）"
+    if re.search(r"主 Agent|已经成为我的主 Agent|当前正在开发中", raw_text):
+        return "理性（400）"
     if re.search(r"充满期待|期待啊|很喜欢|想要试试看|想试试看|会给我带来什么", raw_text):
         return "意愿（310）"
     if re.search(r"调试|测试|验收|判断|分析|字段|schema|流程|试试看|不会那么理想|不可能那么清楚", raw_text):
@@ -678,6 +684,8 @@ def infer_role_signals(event: Dict[str, Any]) -> List[str]:
         roles.append("觉知澄")
     if re.search(r"系统|架构|模块|schema|路由|Hermes|Codex|OpenClaw|MPBM1|mba|龙虾|办公楼|办公团队", raw_text, re.IGNORECASE):
         roles.append("系统架构师")
+    if re.search(r"第一阶段|第二阶段|第三阶段|第四阶段|当前阶段", raw_text):
+        roles.append("推进者")
     family_machine_context = re.search(r"家里的.*(MPBM1|mba|电脑|机器|Mac|mac|龙虾)", raw_text, re.IGNORECASE)
     if (any(tag in topic_tags for tag in ("家庭", "孩子")) and not family_machine_context) or re.search(r"孩子|儿子|女儿|爸爸|父亲", raw_text):
         roles.append("父亲角色")
@@ -715,6 +723,8 @@ def infer_idea_systems(event: Dict[str, Any]) -> List[str]:
     family_machine_context = re.search(r"家里的.*(MPBM1|mba|电脑|机器|Mac|mac|龙虾)", raw_text, re.IGNORECASE)
     if re.search(r"系统|架构|模块|schema|路由|稳定运行|龙虾|办公楼|办公团队|多台", raw_text):
         systems.append("系统建设")
+    if re.search(r"主 Agent|信息处理的机制|api|bug|重新安装", raw_text, re.IGNORECASE):
+        systems.append("生产力")
     if re.search(r"生产力|效率|流程|推进|办公团队", raw_text):
         systems.append("生产力")
     if re.search(r"领导|带团队|稳定自己", raw_text):
@@ -732,10 +742,14 @@ def infer_lifeos_routes(event: Dict[str, Any]) -> List[str]:
     raw_text = normalize_text(event.get("raw_text"))
     topic_tags = split_tags(event.get("topic_tags"))
     routes: List[str] = []
+    if re.search(r"第一阶段", raw_text) and re.search(r"当前阶段", raw_text) and re.search(r"hermes|agent|api|bug", raw_text, re.IGNORECASE):
+        routes.extend(["思考系统", "目标/项目管理", "自我增强系统"])
     if re.search(r"系统|架构|schema|路由|思考|龙虾|办公楼|办公团队|多台", raw_text):
         routes.append("思考系统")
     if re.search(r"目标|项目|推进|计划|方案|试试看|试跑|开始给.*安装", raw_text):
         routes.append("目标/项目管理")
+    if re.search(r"主 Agent|信息处理的机制|感受非常多|帮我处理", raw_text):
+        routes.append("自我增强系统")
     family_machine_context = re.search(r"家里的.*(MPBM1|mba|电脑|机器|Mac|mac|龙虾)", raw_text, re.IGNORECASE)
     if (any(tag in topic_tags for tag in ("家庭", "孩子")) and not family_machine_context) or ("关系" in topic_tags and "Agent协作" not in topic_tags):
         routes.append("关系系统")
@@ -784,6 +798,8 @@ def infer_importance_level(event: Dict[str, Any]) -> str:
 
 def infer_importance_reason(event: Dict[str, Any]) -> str:
     raw_text = normalize_text(event.get("raw_text"))
+    if re.search(r"第一阶段", raw_text) and re.search(r"当前阶段", raw_text) and re.search(r"hermes|agent|api|bug", raw_text, re.IGNORECASE):
+        return "这条内容记录了 Hermes 从安装、排障到成为主 Agent 的阶段成型路径。"
     if re.search(r"MPBM1|mba|龙虾|办公楼|办公团队|多台", raw_text, re.IGNORECASE):
         return "这条内容把外部的多机隐喻转成了你的真实系统试验，值得后续持续跟踪。"
     if re.search(r"系统|架构|schema|路由|模块|Hermes|OpenClaw|Codex", raw_text, re.IGNORECASE):

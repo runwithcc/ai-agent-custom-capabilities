@@ -199,6 +199,10 @@ def infer_emotion_words(event: dict) -> List[str]:
     raw_text = normalize_text(event.get("raw_text") or event.get("message"))
     emotion_tags = split_tag_text(event.get("emotion_tags"))
     emotions: List[str] = []
+    if re.search(r"很幸福", raw_text):
+        emotions.append("幸福")
+    if re.search(r"200 多种 bug|调了四天|用了将近四天", raw_text):
+        emotions.extend(["吃力", "投入"])
     if re.search(r"很喜欢", raw_text):
         emotions.append("喜欢")
     if re.search(r"试试看|看看效果|想试|尝试一次|希望", raw_text):
@@ -213,6 +217,8 @@ def infer_emotion_words(event: dict) -> List[str]:
         emotions.extend(["担心", "不安"])
     if re.search(r"清楚了|想明白了|形成了一个逻辑|笃定", raw_text):
         emotions.append("笃定")
+    if re.search(r"主 Agent|已经成为我的主 Agent", raw_text):
+        emotions.extend(["笃定", "成型感"])
     if re.search(r"抱着 codex 睡", raw_text):
         emotions.append("投入")
     if re.search(r"温暖|幸福|爱", raw_text):
@@ -224,8 +230,12 @@ def infer_emotion_words(event: dict) -> List[str]:
 def infer_hawkins_level(event: dict) -> str:
     raw_text = normalize_text(event.get("raw_text") or event.get("message"))
     scene_type = normalize_text(event.get("scene_type"))
+    if is_agent_stage_recap_note(event):
+        return "理性（400）"
     if re.search(r"爱|温暖|孩子|幸福", raw_text):
         return "爱（500）"
+    if re.search(r"主 Agent|已经成为我的主 Agent|当前正在开发中", raw_text):
+        return "理性（400）"
     if re.search(r"充满期待|期待啊|很喜欢|想试试看|会给我带来什么", raw_text):
         return "意愿（310）"
     if re.search(r"调试|测试|验收|判断|分析|字段名|schema|逻辑|流程|试试看|不会那么理想|不可能那么清楚", raw_text):
@@ -258,6 +268,17 @@ def is_feature_debug_note(event: dict) -> bool:
     )
 
 
+def is_agent_stage_recap_note(event: dict) -> bool:
+    raw_text = normalize_text(event.get("raw_text") or event.get("message"))
+    has_stage_chain = bool(
+        re.search(r"第一阶段", raw_text)
+        and re.search(r"第二阶段", raw_text)
+        and re.search(r"当前阶段", raw_text)
+    )
+    has_agent_context = bool(re.search(r"hermes|oc|cc|api|agent|bug|重新安装|文件夹", raw_text, re.IGNORECASE))
+    return has_stage_chain and has_agent_context
+
+
 def is_multi_machine_agent_trial_note(event: dict) -> bool:
     raw_text = normalize_text(event.get("raw_text") or event.get("message"))
     return bool(
@@ -268,6 +289,8 @@ def is_multi_machine_agent_trial_note(event: dict) -> bool:
 
 
 def _header_template(event: dict) -> str:
+    if is_agent_stage_recap_note(event):
+        return "green"
     if is_multi_machine_agent_trial_note(event):
         return "green"
     if detect_agent_strategy_subtype(event) == "feature_debug":
@@ -317,6 +340,11 @@ def _header_copy(event: dict) -> tuple[str, str]:
     dailynote = event.get("dailynote_sync")
     agent_subtype = detect_agent_strategy_subtype(event)
 
+    if is_agent_stage_recap_note(event):
+        return (
+            "从 4 月 3 日开始连打四场硬仗，Hermes 已经成为我的主 Agent",
+            _ensure_question_prefix("这轮从安装、隔离污染、修 API 到信息处理机制开发，你真正走通了什么？"),
+        )
     if is_multi_machine_agent_trial_note(event):
         return (
             "受“办公楼-办公团队”隐喻触发，开始给第二台 MPBM1 试跑龙虾",
@@ -434,6 +462,8 @@ def _header_copy(event: dict) -> tuple[str, str]:
 
 
 def _human_tags(event: dict) -> List[str]:
+    if is_agent_stage_recap_note(event):
+        return ["阶段复盘", "主Agent", "系统建设"]
     if is_multi_machine_agent_trial_note(event):
         return ["多机实验", "龙虾部署", "系统隐喻"]
     agent_subtype = detect_agent_strategy_subtype(event)
@@ -480,6 +510,14 @@ def _judgement_items(event: dict) -> List[str]:
     emotion_text = "、".join(infer_emotion_words(event))
     hawkins_level = infer_hawkins_level(event)
 
+    if is_agent_stage_recap_note(event):
+        return [
+            "表达类型：阶段复盘 / 主 Agent 成型里程碑",
+            f"情绪判断：{emotion_text}",
+            f"当前能量：{hawkins_level}",
+            "当前状态：你正在回看 Hermes 从安装到成型的几场关键硬仗，并确认它已经坐上主 Agent 的位置。",
+            "你此刻更需要的：沉淀阶段路线、固定规则、继续模块化开发",
+        ]
     if is_multi_machine_agent_trial_note(event):
         return [
             "表达类型：系统试验 / 多机部署启发",
@@ -580,6 +618,12 @@ def _content_items(event: dict) -> List[str]:
 
 
 def _takeaway_items(event: dict) -> List[str]:
+    if is_agent_stage_recap_note(event):
+        return [
+            "这条真正该留下来的，不是一句感悟，而是一条很清楚的成型路径：装好后的幸福、目录污染后的重装、API 空值排查、重新整顿理解，最后走到信息处理机制开发。",
+            "你经历的不是普通调试，而是一段高代价的系统建设过程：将近 200 多种 bug、前后接近 8 天的排查与调整，才把 Hermes 推到可承担主 Agent 的位置。",
+            "当前最关键的结果是：Hermes 已经不只是工具，而是开始成为那个理解你、承接你、帮助你处理大量感受与信息流的总控核心。",
+        ]
     if is_multi_machine_agent_trial_note(event):
         return [
             "你真正想试的，不只是再装一台机器，而是想验证多台设备一起跑起来后，是否会带来更强的组织感、并行感和生产力想象。",
@@ -660,6 +704,11 @@ def _takeaway_items(event: dict) -> List[str]:
 
 
 def _value_items(event: dict) -> List[str]:
+    if is_agent_stage_recap_note(event):
+        return [
+            "这条对你重要，不是因为它总结出了一条抽象方法，而是因为它记录了 Hermes 作为主 Agent 真正成型的阶段证据。",
+            "它和你的关系很深，因为你不是在玩工具，而是在用高强度排障和系统整顿，把一个 agent 调成可以进入你 LifeOS 主干的位置。",
+        ]
     if is_multi_machine_agent_trial_note(event):
         return [
             "这条对你重要，是因为它把一个外部隐喻转成了你的系统实验：你想看多机运行会不会让助手体系从单点协作走向组织化协作。",
@@ -728,6 +777,12 @@ def _value_items(event: dict) -> List[str]:
 
 
 def _action_items(event: dict) -> List[str]:
+    if is_agent_stage_recap_note(event):
+        return [
+            "把这五个阶段整理成一张“Hermes 主 Agent 成型路线图”，每一阶段写清问题、代价、关键判断和最终产出。",
+            "把“目录隔离防污染”和“API 返回空值排查”各沉淀成一份 SOP，后面遇到类似问题时直接复用。",
+            "把“信息处理机制”正式定义成 LifeOS 模块，写清输入、理解、反馈、存储和路由五个环节。",
+        ]
     if is_multi_machine_agent_trial_note(event):
         return [
             "把这台 MPBM1 标成“多机龙虾实验样本 002”，写清它准备承担什么角色、常驻什么任务、想观察什么变化。",
@@ -813,6 +868,12 @@ def _action_items(event: dict) -> List[str]:
 
 
 def _help_items(event: dict) -> List[str]:
+    if is_agent_stage_recap_note(event):
+        return [
+            "我可以帮你把这条阶段复盘整理成一张真正可回看的里程碑卡。",
+            "我可以继续把这四场硬仗拆成 SOP，变成后面搭 agent 时可复用的操作资产。",
+            "我也可以继续陪你把“信息处理机制”往正式模块设计推进下去。",
+        ]
     if is_multi_machine_agent_trial_note(event):
         return [
             "我可以帮你把“多机龙虾实验”整理成一张实验卡，写清机器编号、角色、任务和观察指标。",
