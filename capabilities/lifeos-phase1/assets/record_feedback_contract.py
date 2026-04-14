@@ -659,7 +659,7 @@ def _takeaway_items(event: dict) -> List[str]:
         return [
             "真正高效的做法，不是隔着 bot 反复调，而是直接去动 agent 或代码层。",
             "如果目标是稳定发生，只靠提示词和 LLM 不够，最好落到程序、结构或源码层。",
-            "Codex / cc 这类直接接管 OpenClaw 的方式，更适合做这类底层操作。",
+            "Codex / cc 这类直接接管 Hermes 运行层的方式，更适合做这类底层操作。",
         ]
     if is_stability_leadership_note(event):
         return [
@@ -817,7 +817,7 @@ def _action_items(event: dict) -> List[str]:
     if agent_subtype == "runtime_strategy":
         return [
             "把这条沉淀成一条固定原则：不要隔着 bot 反复说，优先直达 agent 或代码层。",
-            "顺手画出一条最小操作链路，例如“需求 -> Codex -> OpenClaw 代码层 -> 生效”。",
+            "顺手画出一条最小操作链路，例如“需求 -> Codex -> Hermes 代码层 -> 生效”。",
             "把“提示词不保证稳定，程序和代码层更稳定”写成系统约束，后面很多判断会更快。",
         ]
     if is_stability_leadership_note(event):
@@ -908,7 +908,7 @@ def _help_items(event: dict) -> List[str]:
     if agent_subtype == "runtime_strategy":
         return [
             "我可以把这条整理成一张可复用的 SOP / 原则卡。",
-            "我可以直接把这条原则落进 Hermes / OpenClaw 的实现里。",
+            "我可以直接把这条原则落进 Hermes 的实现里。",
             "我可以继续陪你把它拆成完整的分层方案和执行路径。",
         ]
     if is_stability_leadership_note(event):
@@ -954,7 +954,118 @@ def _help_items(event: dict) -> List[str]:
     ]
 
 
+def _normalize_contract_items(value: Any, limit: int = 4) -> List[str]:
+    def _low_signal(text: str) -> bool:
+        normalized = normalize_text(text).lower()
+        return normalized in {"无", "暂无", "没有", "不适用", "n/a", "na", "-", "none", "null"}
+
+    if isinstance(value, list):
+        items = [normalize_text(item) for item in value if normalize_text(item) and not _low_signal(item)]
+    else:
+        text = normalize_text(value)
+        items = [text] if text and not _low_signal(text) else []
+    return unique_list(items)[:limit]
+
+
+def _memory_snapshot_items(event: dict) -> List[str]:
+    items: List[str] = []
+    observation = normalize_text(event.get("memory_observation"))
+    topics = split_tag_text(event.get("memory_topics"))
+    preferences = split_tag_text(event.get("user_preference_updates"))
+    if observation:
+        items.append(observation)
+    if topics:
+        items.append(f"这次会记到：{' / '.join(topics[:4])}")
+    if preferences:
+        items.append(f"也会继续记住你的偏好：{'；'.join(preferences[:3])}")
+    return unique_list(items)
+
+
+def _long_term_snapshot_items(event: dict) -> List[str]:
+    items: List[str] = []
+    decision = normalize_text(event.get("long_term_library_decision"))
+    category = normalize_text(event.get("long_term_library_category"))
+    if decision:
+        items.append(decision)
+    elif category:
+        items.append(f"先按「{category}」归类。")
+    return unique_list(items)
+
+
+def _build_llm_feedback_contract(event: dict) -> Dict[str, Any]:
+    payload = event.get("llm_feedback_contract")
+    if not isinstance(payload, dict):
+        return {}
+
+    title, subtitle = _header_copy(event)
+    llm_title = normalize_text(payload.get("title"))
+    llm_subtitle = normalize_text(payload.get("subtitle"))
+    llm_summary = normalize_text(payload.get("summary"))
+    llm_tags = _normalize_contract_items(payload.get("tags"), limit=3)
+    judgement_items = _normalize_contract_items(payload.get("judgement_items"), limit=5) or _judgement_items(event)
+    takeaway_items = _normalize_contract_items(payload.get("takeaway_items"), limit=5) or _takeaway_items(event)
+    value_items = _normalize_contract_items(payload.get("value_items"), limit=4) or _value_items(event)
+    memory_items = _normalize_contract_items(payload.get("memory_items"), limit=4) or _memory_snapshot_items(event)
+    long_term_items = _normalize_contract_items(payload.get("long_term_items"), limit=4) or _long_term_snapshot_items(event)
+    action_items = _normalize_contract_items(payload.get("action_items"), limit=4) or _action_items(event)
+    help_items = _normalize_contract_items(payload.get("help_items"), limit=4) or _help_items(event)
+
+    has_llm_signal = any(
+        [
+            llm_title,
+            llm_subtitle,
+            llm_summary,
+            llm_tags,
+            judgement_items,
+            takeaway_items,
+            value_items,
+            memory_items,
+            long_term_items,
+            action_items,
+            help_items,
+        ]
+    )
+    if not has_llm_signal:
+        return {}
+
+    sections = [
+        {"title": "🧾 内容", "items": _content_items(event)},
+        {"title": "🧭 我对这条的判断", "items": judgement_items},
+        {"title": "🎯 我替你提炼出的关键内容", "items": takeaway_items},
+        {"title": "💡 这条真正重要的地方", "items": value_items},
+    ]
+    if memory_items:
+        sections.append({"title": "🧠 Hermes 记住了什么", "items": memory_items})
+    if long_term_items:
+        sections.append({"title": "🗂️ 长期库建议", "items": long_term_items})
+    sections.extend(
+        [
+            {"title": "🪜 下一步行动方向的建议", "items": action_items},
+            {"title": "🤝 你需要我继续帮你做些什么吗？", "items": help_items},
+        ]
+    )
+
+    note_text = ""
+    status = event.get("status")
+    if isinstance(status, dict) and normalize_text(status.get("archive")) == "failed":
+        note_text = "归档出了点问题，我会继续补处理。"
+
+    return {
+        "header_template": _header_template(event),
+        "title": llm_title or title,
+        "subtitle": llm_subtitle or subtitle,
+        "tags": llm_tags or _human_tags(event),
+        "summary": llm_summary or (takeaway_items[0] if takeaway_items else extract_first_sentence(normalize_text(event.get("raw_text")))),
+        "sections": sections,
+        "note_text": note_text,
+    }
+
+
 def build_record_feedback_contract(event: dict) -> Dict[str, Any]:
+    llm_contract = _build_llm_feedback_contract(event)
+    if llm_contract:
+        return llm_contract
+
     title, subtitle = _header_copy(event)
     sections = [
         {"title": "🧾 内容", "items": _content_items(event)},
