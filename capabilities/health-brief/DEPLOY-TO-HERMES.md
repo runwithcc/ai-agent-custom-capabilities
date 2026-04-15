@@ -37,17 +37,23 @@ curl -s http://100.98.2.78:8780/api/health/summary/latest | head
 
 ## 3. 需要部署的文件
 
-推荐在 Hermes 宿主机放到：
+推荐把 prompt 资产放到：
 
 ```bash
 ~/.hermes/custom/health-brief/
 ```
 
+另外，Hermes 的 cron 预执行脚本必须放在：
+
+```bash
+~/.hermes/scripts/
+```
+
 需要拷贝过去的文件：
 
 - `scripts/hermes-health-fetch.py`
-- `assets/morning-health-brief-prompt.md`
-- `assets/evening-health-brief-prompt.md`
+- `assets/morning-health-brief-cron-prompt.md`
+- `assets/evening-health-brief-cron-prompt.md`
 
 ## 4. 安装脚本
 
@@ -55,18 +61,19 @@ curl -s http://100.98.2.78:8780/api/health/summary/latest | head
 
 ```bash
 mkdir -p ~/.hermes/custom/health-brief
+mkdir -p ~/.hermes/scripts
 ```
 
 然后把以下文件放进去：
 
-- `hermes-health-fetch.py`
-- `morning-health-brief-prompt.md`
-- `evening-health-brief-prompt.md`
+- `~/.hermes/scripts/hermes_health_fetch.py`
+- `morning-health-brief-cron-prompt.md`
+- `evening-health-brief-cron-prompt.md`
 
 再执行：
 
 ```bash
-chmod +x ~/.hermes/custom/health-brief/hermes-health-fetch.py
+chmod +x ~/.hermes/scripts/hermes_health_fetch.py
 ```
 
 ## 5. 建立 cron
@@ -74,13 +81,13 @@ chmod +x ~/.hermes/custom/health-brief/hermes-health-fetch.py
 ### 5.1 早晨 06:00
 
 ```bash
-hermes cron create "0 6 * * *" "$(cat ~/.hermes/custom/health-brief/morning-health-brief-prompt.md)" --name "morning-health-brief" --delivery feishu
+hermes cron create "0 6 * * *" "$(cat ~/.hermes/custom/health-brief/morning-health-brief-cron-prompt.md)" --name "morning-health-brief" --script hermes_health_fetch.py --deliver feishu:<chat_id>
 ```
 
 ### 5.2 晚上 21:00
 
 ```bash
-hermes cron create "0 21 * * *" "$(cat ~/.hermes/custom/health-brief/evening-health-brief-prompt.md)" --name "evening-health-brief" --delivery feishu
+hermes cron create "0 21 * * *" "$(cat ~/.hermes/custom/health-brief/evening-health-brief-cron-prompt.md)" --name "evening-health-brief" --script hermes_health_fetch.py --deliver feishu:<chat_id>
 ```
 
 ## 6. 查看当前 cron

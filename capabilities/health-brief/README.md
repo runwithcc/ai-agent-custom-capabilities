@@ -39,6 +39,8 @@ Prompt 资产：
 
 - [assets/morning-health-brief-prompt.md](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/capabilities/health-brief/assets/morning-health-brief-prompt.md)
 - [assets/evening-health-brief-prompt.md](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/capabilities/health-brief/assets/evening-health-brief-prompt.md)
+- [assets/morning-health-brief-cron-prompt.md](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/capabilities/health-brief/assets/morning-health-brief-cron-prompt.md)
+- [assets/evening-health-brief-cron-prompt.md](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/capabilities/health-brief/assets/evening-health-brief-cron-prompt.md)
 - [assets/runtime-file-index.md](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/capabilities/health-brief/assets/runtime-file-index.md)
 
 效果示例：
