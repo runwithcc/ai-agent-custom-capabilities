@@ -21,12 +21,17 @@ current_capabilities:
     status: "in_progress"
     capability_doc: "capabilities/lifeos-phase1/README.md"
     latest_session: "sessions/2026-04-11-hermes-lifeos-phase1-build-log.md"
+  - id: "health_brief_loop"
+    name: "Hermes 健康晨报 / 晚报能力"
+    status: "in_progress"
+    capability_doc: "capabilities/health-brief/README.md"
+    latest_session: "sessions/2026-04-15-hermes-health-loop-build-log.md"
 
 publishing_policy:
   local_git_required: true
   remote_github_required: true
   target_repo_name: "AI 代理人自建功能"
-  current_remote_status: "not_connected"
+  current_remote_status: "connected"
 
 notes:
   - "When implementation files live outside this folder, this registry must still point to them."

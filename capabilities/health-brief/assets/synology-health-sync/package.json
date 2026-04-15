@@ -1,0 +1,10 @@
+{
+  "name": "hermes-health-sync",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "rebuild": "node scripts/rebuild-from-raw.js"
+  }
+}

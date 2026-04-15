@@ -16,3 +16,4 @@
 
 - [setup_lifeos_bitable_phase1.js](/Users/hiddenwangcc/Documents/Playground/scripts/setup_lifeos_bitable_phase1.js)
 - [preview_lifeos_phase1_bundle.py](/Users/hiddenwangcc/Documents/Playground/scripts/preview_lifeos_phase1_bundle.py)
+- [hermes-health-fetch.py](/Users/hiddenwangcc/Documents/Playground/docs/hermes-user-space/ai-agent-custom-capabilities/scripts/hermes-health-fetch.py)

@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+  hermes-health-sync:
+    image: docker.m.daocloud.io/library/node:22-alpine
+    container_name: hermes-health-sync
+    restart: unless-stopped
+    working_dir: /app
+    command: ["sh", "-lc", "npm start"]
+    environment:
+      HEALTH_SYNC_PORT: "${HEALTH_SYNC_PORT:-8780}"
+      HEALTH_SYNC_BIND: "${HEALTH_SYNC_BIND:-0.0.0.0}"
+      HEALTH_SYNC_TOKEN: "${HEALTH_SYNC_TOKEN}"
+      HEALTH_SYNC_TIMEZONE: "${HEALTH_SYNC_TIMEZONE:-Asia/Shanghai}"
+      HEALTH_SYNC_DATA_DIR: "${HEALTH_SYNC_DATA_DIR:-/opt/data}"
+    volumes:
+      - /volume1/docker/hermes-health-sync/app:/app
+      - /volume1/docker/hermes-health-sync/data:/opt/data
+    ports:
+      - "8780:8780"
